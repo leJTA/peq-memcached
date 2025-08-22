@@ -512,6 +512,9 @@ struct settings {
     bool watch_enabled; /* allows watch commands to be dropped */
     bool relaxed_privileges;   /* Relax process restrictions when running testapp */
     struct slab_rebal_thread *slab_rebal; /* struct for page mover thread */
+    // BEGIN CODE (3Q)
+    double compression_ratio_min; /* minimum compression ratio (uncompressed_size / compressed_size) */
+    // END CODE (3Q)
 #ifdef EXTSTORE
     unsigned int ext_io_threadcount; /* number of IO threads to run. */
     unsigned int ext_page_size; /* size in megabytes of storage pages. */

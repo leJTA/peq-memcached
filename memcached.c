@@ -270,6 +270,9 @@ static void settings_init(void) {
     settings.drop_privileges = false;
     settings.watch_enabled = true;
     settings.read_buf_mem_limit = 0;
+    // BEGIN CODE (3Q)
+    settings.compression_ratio_min = 0.3;
+    // END CODE (3Q)
 #ifdef MEMCACHED_DEBUG
     settings.relaxed_privileges = false;
 #endif
