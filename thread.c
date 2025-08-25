@@ -25,6 +25,10 @@
 #include <atomic.h>
 #endif
 
+// BEGIN CODE (3Q)
+#include "3q_compressor.h"
+// END CODE (3Q)
+
 #define ITEMS_PER_ALLOC 64
 
 /* An item in the connection queue. */
@@ -965,6 +969,12 @@ enum store_item_type store_item(item *item, int comm, LIBEVENT_THREAD *t, int *n
 
     hv = hash(ITEM_key(item), item->nkey);
     item_lock(hv);
+    // BEGIN CODE (3Q)
+    bool compressed = do_compress_item(item, ZSTD, t);
+    if (compressed) {
+        fprintf(stderr, "[DEBUG] item compressed\n");
+    }
+    // END CODE (3Q)
     ret = do_store_item(item, comm, t, hv, nbytes, cas, cas_in, cas_stale);
     item_unlock(hv);
     return ret;

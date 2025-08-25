@@ -1,6 +1,8 @@
+#include "memcached.h"
 #include "3q_compressor.h"
 
 #include <stdlib.h>
+#include <string.h>
 #include <zstd.h>
 #include <lz4.h>
 #include <zlib.h>
@@ -15,7 +17,7 @@ struct compression_resources {
 
 static struct compression_resources* _rcs;
 
-void compression_resources_init()
+void compression_resources_init(void)
 {
    _rcs = calloc(settings.num_threads, sizeof(struct compression_resources));
    if (_rcs == NULL) {
@@ -31,7 +33,7 @@ void compression_resources_init()
    }
 }
 
-void compression_resources_cleanup()
+void compression_resources_cleanup(void)
 {
    for (int i = 0; i < settings.num_threads; ++i) {
       free(_rcs[i].buffer);
@@ -43,38 +45,39 @@ void compression_resources_cleanup()
 bool do_compress_item(item* it, enum compression_algorithm ca, LIBEVENT_THREAD *t)
 {
    if (it == NULL) {
-      fprintf(stderr, "ERROR: unable to compress item, pointer is NULL\n");
+      fprintf(stderr, "[ERROR] unable to compress item, pointer is NULL\n");
       exit(EXIT_FAILURE);
    }
-   assert(ITEM_lruid(it) | COLD_LRU);
+   // assert(ITEM_lruid(it) | COLD_LRU);
 
    struct compression_resources rc = _rcs[t->thread_baseid];
+   size_t compressed_size = 0;
    switch (ca) {
       case ZSTD:
-         size_t compressed_size = ZSTD_compressCCtx(rc.cctx, rc.buffer, rc.buffer_size, ITEM_data(it), it->nbytes, 1);
-         
+         compressed_size = ZSTD_compressCCtx(rc.cctx, rc.buffer, rc.buffer_size, ITEM_data(it), it->nbytes, 1);
+         if (ZSTD_isError(compressed_size)) {
+            fprintf(stderr, "[ERROR] Zstd compression failed : %s \n", ZSTD_getErrorName(compressed_size));
+            exit(EXIT_FAILURE);
+         }
          // If the compression ratio is not high enough, the compression is dropped
          if (((double) it->nbytes / compressed_size) < settings.compression_ratio_min) {
             return false;
          }
-         
-         // Shrinking the memory allocated to the item
-         int new_ntotal = ITEM_ntotal(it) - (it->nbytes - compressed_size);
-         item* tmp = realloc(it, new_ntotal * sizeof(char));
-         if (tmp == NULL) {
-            fprintf(stderr, "ERROR: Unable to shrink the memory allocated to the item\n");
-            // free(it);
-            exit(EXIT_FAILURE);
-         }
-         it->nbytes = compressed_size;
-         it = tmp;
          break;
-         
+
       case LZ4:
          break;
+
       case ZLIB:
          break;
+
    }
+
+   fprintf(stderr, "[DEBUG] old_bytes = %d, new_bytes = %lu\n", it->nbytes, compressed_size);
+   memcpy(ITEM_data(it), rc.buffer, compressed_size *  sizeof(char));
+   it->nbytes = compressed_size;
+   // Move the item to a slab class with a smaller item size
+   // TODO: call function to change slab class
    
    return true;
 }
@@ -88,26 +91,26 @@ void do_decompress_item(item* it, enum compression_algorithm ca, LIBEVENT_THREAD
    assert(ITEM_lruid(it) | COLD_LRU);
 
    struct compression_resources rc = _rcs[t->thread_baseid];
+   size_t decompressed_size = 0;
    switch (ca) {
       case ZSTD:
-         size_t decompressed_size = ZSTD_decompressDCtx(rc.dctx, rc.buffer, rc.buffer_size, ITEM_data(it), it->nbytes);
-         assert(it->nbytes < decompressed_size);
-
-         // Expanding the memory allocated to the item
-         int new_ntotal = ITEM_ntotal(it) + (decompressed_size - it->nbytes);
-         item* tmp = realloc(it, decompressed_size * sizeof(char));
-         if (tmp == NULL) {
-            fprintf(stderr, "ERROR: unable to expand item allocated size\n");
-            // free(it);
+         decompressed_size = ZSTD_decompressDCtx(rc.dctx, rc.buffer, rc.buffer_size, ITEM_data(it), it->nbytes);
+         if (ZSTD_isError(decompressed_size)) {
+            fprintf(stderr, "[ERROR] Zstd decompression failed : %s \n", ZSTD_getErrorName(decompressed_size));
             exit(EXIT_FAILURE);
          }
-         it->nbytes = decompressed_size;
-         it = tmp;
+         assert(it->nbytes < decompressed_size);
          break;
-         
+
       case LZ4:
          break;
+         
       case ZLIB:
          break;
    }
+
+   memcpy(ITEM_data(it), rc.buffer, decompressed_size *  sizeof(char));
+   it->nbytes = decompressed_size;
+   // Move the item to a slab class with a larger item size
+   // TODO: call function to change slab class
 }

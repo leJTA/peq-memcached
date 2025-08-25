@@ -61,6 +61,10 @@
 #include <sys/sysctl.h>
 #endif
 
+// BEGIN CODE (3Q)
+#include "3q_compressor.h"
+// END CODE (3Q)
+
 /*
  * forward declarations
  */
@@ -271,7 +275,7 @@ static void settings_init(void) {
     settings.watch_enabled = true;
     settings.read_buf_mem_limit = 0;
     // BEGIN CODE (3Q)
-    settings.compression_ratio_min = 0.3;
+    settings.compression_ratio_min = 2;
     // END CODE (3Q)
 #ifdef MEMCACHED_DEBUG
     settings.relaxed_privileges = false;
@@ -5924,6 +5928,9 @@ int main (int argc, char **argv) {
     }
 
     /* initialize other stuff */
+    // BEGIN CODE (3Q)
+    compression_resources_init();
+    // END CODE (3Q)
     stats_init();
     logger_init();
     logger_create(); // main process logger
