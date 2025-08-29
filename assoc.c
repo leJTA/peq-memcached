@@ -367,3 +367,12 @@ void assoc_iterate_final(void *iterp) {
     mutex_unlock(&maintenance_lock);
     free(iter);
 }
+
+// BEGIN CODE (3Q)
+void update_item_before(item* it)
+{
+    uint32_t hv = hash(ITEM_key(it), it->nkey);
+    item **before = _hashitem_before(ITEM_key(it), it->nkey, hv);
+    if (*before) (*before)->h_next = it;
+}
+// END CODE (3Q)

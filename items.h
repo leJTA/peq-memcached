@@ -35,6 +35,10 @@ item *do_item_crawl_q(item *it);
 
 void *item_lru_bump_buf_create(void);
 
+// BEGIN CODE (3Q)
+void change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal);
+// END CODE (3Q)
+
 #define LRU_PULL_EVICT 1
 #define LRU_PULL_CRAWL_BLOCKS 2
 #define LRU_PULL_RETURN_ITEM 4 /* fill info struct if available */

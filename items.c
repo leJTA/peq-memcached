@@ -1774,3 +1774,54 @@ item *do_item_crawl_q(item *it) {
 
     return it->next; /* success */
 }
+
+// BEGIN CODE (3Q)
+void change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
+{
+    item* it = *ptr;
+    int new_nbytes = it->nbytes + (new_ntotal - old_ntotal);
+    unsigned int id = slabs_clsid(new_ntotal);
+
+    if (it->slabs_clsid == id) {
+        // This should never happen if the minimal compression ratio is greater than 1.5, 
+        // which should always be the case
+        return;
+    }
+
+    // 1. allocate new slab
+    item* new_it = slabs_alloc(id, 0);
+    if (new_it == NULL) {
+        fprintf(stderr, "[ERROR] slabs allocation failed\n");
+    }
+
+    // 2. copy item header
+    memcpy(new_it, it, (new_ntotal - new_nbytes));
+
+    // 3. unlink old item
+    if ((it->it_flags & ITEM_LINKED) != 0) {
+        it->it_flags &= ~ITEM_LINKED;
+        STATS_LOCK();
+        if (new_ntotal >= old_ntotal) {
+            stats_state.curr_bytes += (new_ntotal - old_ntotal);
+        } else {
+            stats_state.curr_bytes -= (old_ntotal - new_ntotal);
+        }
+        STATS_UNLOCK();
+        item_stats_sizes_remove(it);
+        item_unlink_q(it);
+        do_item_remove(it);
+    }
+
+    // 4. update new item data
+    new_it->slabs_clsid = id;
+    new_it->nbytes = new_nbytes;
+    update_item_before(new_it);
+
+    // 5. link new item
+    item_link_q(new_it);
+    item_stats_sizes_add(new_it);
+        
+    // 6. update item pointer
+    *ptr = new_it;
+}
+// END CODE (3Q)

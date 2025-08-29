@@ -14,4 +14,8 @@ void *assoc_get_iterator(void);
 bool assoc_iterate(void *iterp, item **it);
 void assoc_iterate_final(void *iterp);
 
+// BEGIN CODE (3Q)
+void update_item_before(item* it);
+// END CODE (3Q)
+
 extern unsigned int hashpower;

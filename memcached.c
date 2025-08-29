@@ -275,7 +275,8 @@ static void settings_init(void) {
     settings.watch_enabled = true;
     settings.read_buf_mem_limit = 0;
     // BEGIN CODE (3Q)
-    settings.compression_ratio_min = 2;
+    settings.compression_ratio_min = 1.2;
+    settings.comp_algo = COMPRESSION_SNAPPY;
     // END CODE (3Q)
 #ifdef MEMCACHED_DEBUG
     settings.relaxed_privileges = false;
@@ -6224,6 +6225,10 @@ int main (int argc, char **argv) {
 
     /* cleanup base */
     event_base_free(main_base);
+
+    // BEGIN CODE (3Q)
+    compression_resources_cleanup();
+    // END CODE (3Q)
 
     free(meta);
 

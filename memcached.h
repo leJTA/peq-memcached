@@ -294,6 +294,12 @@ enum delta_result_type {
     OK, NON_NUMERIC, EOM, DELTA_ITEM_NOT_FOUND, DELTA_ITEM_CAS_MISMATCH
 };
 
+// BEGIN CODE (3Q)
+enum compression_algorithm {
+   COMPRESSION_ZSTD = 0, COMPRESSION_LZ4, COMPRESSION_SNAPPY
+};
+// END CODE (3Q)
+
 /** Time relative to server start. Smaller than time_t on 64-bit systems. */
 // TODO: Move to sub-header. needed in logger.h
 //typedef unsigned int rel_time_t;
@@ -514,6 +520,7 @@ struct settings {
     struct slab_rebal_thread *slab_rebal; /* struct for page mover thread */
     // BEGIN CODE (3Q)
     double compression_ratio_min; /* minimum compression ratio (uncompressed_size / compressed_size) */
+    enum compression_algorithm comp_algo; /* ZSTD, LZ4 or SNAPPY */
     // END CODE (3Q)
 #ifdef EXTSTORE
     unsigned int ext_io_threadcount; /* number of IO threads to run. */
