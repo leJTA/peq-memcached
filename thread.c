@@ -885,11 +885,13 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
     hv = hash(key, nkey);
     item_lock(hv);
     it = do_item_get(key, nkey, hv, t, do_update);
+    
     // BEGIN CODE (3Q)
-    if (it && do_decompress_item(&it, t)) {
+    if (it && do_decompress_item(&it, t) && settings.verbose >= 2) {
         fprintf(stderr, "[DEBUG] item decompressed and moved to slabs class %d\n", it->slabs_clsid);
     }
     // END CODE (3Q)
+    
     item_unlock(hv);
     return it;
 }
@@ -974,11 +976,14 @@ enum store_item_type store_item(item *item, int comm, LIBEVENT_THREAD *t, int *n
 
     hv = hash(ITEM_key(item), item->nkey);
     item_lock(hv);
+
     // BEGIN CODE (3Q)
-    if (item && do_compress_item(&item, t)) {
+    ;
+    if (do_compress_item(&item, t) && settings.verbose > 1) {
         fprintf(stderr, "[DEBUG] item compressed and moved to slabs class %d\n", item->slabs_clsid);
     }
     // END CODE (3Q)
+    
     ret = do_store_item(item, comm, t, hv, nbytes, cas, cas_in, cas_stale);
     item_unlock(hv);
     return ret;

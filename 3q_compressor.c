@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <execinfo.h>
 #include <zstd.h>
 #include <lz4.h>
 #include <snappy-c.h>
@@ -110,7 +111,9 @@ bool do_compress_item(item** ptr, LIBEVENT_THREAD* t)
 		return false;
 	}
 
-	fprintf(stderr, "[DEBUG] compression ratio = %f\n", (double)it->nbytes / compressed_size);
+	if (settings.verbose > 1) {
+		fprintf(stderr, "[DEBUG] item compressed with compression ratio = %f\n", (double)it->nbytes / compressed_size);
+	}
 	change_item_slabs_cls(ptr, old_ntotal, new_ntotal);
 	memcpy(ITEM_data(*ptr), rc.buffer, compressed_size);
 
@@ -138,8 +141,8 @@ bool do_decompress_item(item** ptr, LIBEVENT_THREAD* t)
 		}
 		break;
 
-	case COMPRESSION_LZ4: 
-		{ 
+	case COMPRESSION_LZ4:
+		{
 			int decomp_sz = LZ4_decompress_safe(ITEM_data(it), rc.buffer, it->nbytes, rc.buffer_size);
 			if (decomp_sz <= 0) {
 				fprintf(stderr, "[ERROR] LZ4 decompression failed\n");
@@ -165,7 +168,6 @@ bool do_decompress_item(item** ptr, LIBEVENT_THREAD* t)
 	new_ntotal = old_ntotal + (decompressed_size - it->nbytes);
 	assert(it->nbytes < decompressed_size);
 
-	fprintf(stderr, "[INFO] stats_state.curr_bytes = %lu\n", stats_state.curr_bytes);
 	change_item_slabs_cls(ptr, old_ntotal, new_ntotal);
 	memcpy(ITEM_data(*ptr), rc.buffer, decompressed_size);
 

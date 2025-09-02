@@ -275,8 +275,8 @@ static void settings_init(void) {
     settings.watch_enabled = true;
     settings.read_buf_mem_limit = 0;
     // BEGIN CODE (3Q)
-    settings.compression_ratio_min = 1.2;
-    settings.comp_algo = COMPRESSION_SNAPPY;
+    settings.compression_ratio_min = 2.0;
+    settings.comp_algo = COMPRESSION_ZSTD;
     // END CODE (3Q)
 #ifdef MEMCACHED_DEBUG
     settings.relaxed_privileges = false;

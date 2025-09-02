@@ -369,10 +369,24 @@ void assoc_iterate_final(void *iterp) {
 }
 
 // BEGIN CODE (3Q)
-void update_item_before(item* it)
+void update_item_in_hashtable(item* it)
 {
     uint32_t hv = hash(ITEM_key(it), it->nkey);
+    uint64_t oldbucket;
+    
+    // Replace the successor of the previous item and the current item with the new item
     item **before = _hashitem_before(ITEM_key(it), it->nkey, hv);
-    if (*before) (*before)->h_next = it;
+    if (*before) {
+        fprintf(stderr, "[DEBUG] update_item_in_hashtable : *before = %p\n", (void*)(*before));
+        (*before)->h_next = 0;
+        (*before) = it;
+    }
+    if (expanding &&
+        (oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket)
+    {
+        old_hashtable[oldbucket] = it;
+    } else {
+        primary_hashtable[hv & hashmask(hashpower)] = it;
+    }
 }
 // END CODE (3Q)
