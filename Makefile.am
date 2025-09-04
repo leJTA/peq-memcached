@@ -31,7 +31,8 @@ memcached_SOURCES = memcached.c memcached.h \
                     restart.c restart.h \
                     proto_text.c proto_text.h \
                     proto_bin.c proto_bin.h \
-						  3q_compressor.h 3q_compressor.c
+						  3q_compressor.h 3q_compressor.c \
+						  3q_history_buffer.h 3q_history_buffer.c
 
 if BUILD_SOLARIS_PRIVS
 memcached_SOURCES += solaris_priv.c
@@ -230,3 +231,11 @@ maintainer-clean-local:
 	-rm configure
 	-rm config.log
 	-rm config.status
+	-rm -r gcov-report
+	-rm 3q_history_buffer_test
+
+test-3q: 3q_history_buffer.c 3q_history_buffer.t.c
+	$(CC) -Wall -Wextra --coverage 3q_history_buffer.c 3q_history_buffer.t.c -lrt -lgcov -o 3q_history_buffer_test
+	./3q_history_buffer_test
+	gcovr --root . --exclude *.t.c --exclude third_party/
+	gcovr --root . --exclude *.t.c --exclude third_party/ --html-details -o gcov-report/
