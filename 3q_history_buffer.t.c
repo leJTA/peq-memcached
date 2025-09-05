@@ -10,6 +10,7 @@ MU_TEST(test_create_empty_buffer) {
    history_buffer_init(5);
    
    mu_assert_int_eq(5, history_buffer_capacity());
+   mu_assert_int_eq(32 + 5 * (24 + 255), history_buffer_max_mem_usage());
    mu_assert(history_buffer_is_empty(), "Buffer should be empty");
    mu_assert(history_buffer_tail() == NULL, "Head should be NULL");
    mu_assert(history_buffer_head() == NULL, "Tail should be NULL");
@@ -20,6 +21,7 @@ MU_TEST(test_create_empty_buffer) {
 MU_TEST(test_create_buffer_with_invalid_capacity) {
    bool success = history_buffer_init(0);
 
+   mu_assert_int_eq(0, history_buffer_max_mem_usage());
    mu_assert(!success, "Allocation of buffer with invalid capacity should fail");
 
    history_buffer_cleanup();

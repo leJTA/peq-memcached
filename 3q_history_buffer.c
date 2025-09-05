@@ -48,18 +48,6 @@ bool history_buffer_init(size_t capacity)
    return true;
 }
 
-#ifdef UNIT_TESTING
-void* history_buffer_tail()
-{
-   return _history->tail;
-}
-
-void* history_buffer_head()
-{
-   return _history->head;
-}
-#endif // UNIT_TESTING
-
 void history_buffer_cleanup(void)
 {
    if (_history == NULL) return;
@@ -183,5 +171,20 @@ size_t history_buffer_capacity(void)
 
 size_t history_buffer_max_mem_usage(void)
 {
+   if (!_history) {
+      return 0;
+   }
    return sizeof(history_buffer) + _history->capacity * (sizeof(history_item) + UINT8_MAX * sizeof(char));
 }
+
+#ifdef UNIT_TESTING
+void* history_buffer_tail()
+{
+   return _history->tail;
+}
+
+void* history_buffer_head()
+{
+   return _history->head;
+}
+#endif // UNIT_TESTING
