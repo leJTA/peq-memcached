@@ -1,5 +1,4 @@
 from pymemcache.client import base
-import zstandard as zstd
 
 def main():
    client = base.Client(('127.0.0.1', 11211))

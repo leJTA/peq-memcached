@@ -27,7 +27,7 @@ void destroy_history_buffer(history_buffer* history)
 {
    if (history == NULL) return;
 
-   history_item* hi = history->tail;
+   history_item* hi = history->head;
    history_item* nxt = NULL;
    while (hi != NULL)
    {
@@ -45,7 +45,7 @@ void history_buffer_enqueue(history_buffer* history, char* key, uint8_t nkey)
    }
 
    history_item* hi = malloc(sizeof(history_item));
-   hi->key = calloc(nkey, sizeof(char));
+   hi->key = malloc(nkey * sizeof(char));
    memcpy(hi->key, key, nkey);
    hi->nkey = nkey;
 
@@ -114,7 +114,7 @@ bool history_buffer_contains(history_buffer* history, char* key, uint8_t nkey)
    history_item* hi = history->head;
    while (hi != NULL)
    {
-      if (memcmp(hi->key, key, nkey) == 0) {
+      if (hi->nkey == nkey && memcmp(hi->key, key, nkey) == 0) {
          return true;
       }
       hi = hi->next;

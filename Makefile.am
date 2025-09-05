@@ -234,8 +234,10 @@ maintainer-clean-local:
 	-rm -r gcov-report
 	-rm 3q_history_buffer_test
 
-test-3q: 3q_history_buffer.c 3q_history_buffer.t.c
-	$(CC) -Wall -Wextra --coverage 3q_history_buffer.c 3q_history_buffer.t.c -lrt -lgcov -o 3q_history_buffer_test
+TEST_3Q_FLAGS = -Wall -Wextra -Wpedantic -g -O0 -fsanitize=address --coverage
+
+test-3q:
+	$(CC) $(TEST_3Q_FLAGS) 3q_history_buffer.c 3q_history_buffer.t.c -lrt -lgcov -o 3q_history_buffer_test
 	./3q_history_buffer_test
 	gcovr --root . --exclude *.t.c --exclude third_party/
 	gcovr --root . --exclude *.t.c --exclude third_party/ --html-details -o gcov-report/

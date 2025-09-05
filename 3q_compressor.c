@@ -10,7 +10,7 @@
 #include <snappy-c.h>
 #include <zlib.h>
 
-static struct compression_resources {
+struct compression_resources {
 	char* buffer;
 	size_t buffer_size;
 
