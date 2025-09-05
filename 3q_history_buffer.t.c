@@ -1,96 +1,100 @@
 #include "3q_history_buffer.h"
 #include "third_party/minunit/minunit.h"
 
+#ifdef UNIT_TESTING
+void* history_buffer_tail();
+void* history_buffer_head();
+#endif // UNIT_TESTING
+
 MU_TEST(test_create_empty_buffer) {
-   history_buffer* history = create_history_buffer(5);
+   history_buffer_init(5);
    
-   mu_assert(history_buffer_is_empty(history), "Buffer should be empty");
-   mu_assert(history->head == NULL, "Head should be NULL");
-   mu_assert(history->tail == NULL, "Tail should be NULL");
+   mu_assert(history_buffer_is_empty(), "Buffer should be empty");
+   mu_assert(history_buffer_tail() == NULL, "Head should be NULL");
+   mu_assert(history_buffer_head() == NULL, "Tail should be NULL");
    
-   destroy_history_buffer(history);
+   history_buffer_cleanup();
 }
 
 MU_TEST(test_create_buffer_with_invalid_capacity) {
-   history_buffer* history = create_history_buffer(0);
+   bool success = history_buffer_init(0);
 
-   mu_assert(history == NULL, "Buffer of invalid capacity should be null");
+   mu_assert(!success, "Allocation of buffer of invalid capacity should fail");
 
-   destroy_history_buffer(history);
+   history_buffer_cleanup();
 }
 
 MU_TEST(test_enqueue_one_element) {
-   history_buffer* history = create_history_buffer(5);
+   history_buffer_init(5);
    
-   history_buffer_enqueue(history, "hello", 5);
-   mu_assert_int_eq(1, history->size);
-   mu_assert(history->head == history->tail, "Head and tail should be equal");
-   mu_assert(history_buffer_contains(history, "hello", 5), "Should contain 'hello'");
+   history_buffer_enqueue("hello", 5);
+   mu_assert_int_eq(1, history_buffer_size());
+   mu_assert(history_buffer_tail() == history_buffer_head(), "Head and tail should be equal");
+   mu_assert(history_buffer_contains("hello", 5), "Should contain 'hello'");
    
-   destroy_history_buffer(history);
+   history_buffer_cleanup();
 }
 
 MU_TEST(test_dequeue_element) {
-   history_buffer* history = create_history_buffer(5);
+   history_buffer_init(5);
    
-   history_buffer_enqueue(history, "hello", 5);
-   history_buffer_dequeue(history);
+   history_buffer_enqueue("hello", 5);
+   history_buffer_dequeue();
    
-   mu_assert(!history_buffer_contains(history, "hello", 5), "Should not contain 'hello'");
-   mu_assert(history_buffer_is_empty(history), "Buffer should be empty");
-   mu_assert(history->head == NULL, "Head should be NULL");
-   mu_assert(history->tail == NULL, "Tail should be NULL");
+   mu_assert(!history_buffer_contains("hello", 5), "Should not contain 'hello'");
+   mu_assert(history_buffer_is_empty(), "Buffer should be empty");
+   mu_assert(history_buffer_head() == NULL, "Head should be NULL");
+   mu_assert(history_buffer_tail() == NULL, "Tail should be NULL");
    
-   destroy_history_buffer(history);
+   history_buffer_cleanup();
 }
 
 MU_TEST(test_fill_buffer) {
-   history_buffer* history = create_history_buffer(5);
+   history_buffer_init(5);
    
-   history_buffer_enqueue(history, "hello", 5);
-   history_buffer_enqueue(history, "world", 5);
-   history_buffer_enqueue(history, "foo", 3);
-   history_buffer_enqueue(history, "bar", 3);
-   history_buffer_enqueue(history, "bazz", 4);
+   history_buffer_enqueue("hello", 5);
+   history_buffer_enqueue("world", 5);
+   history_buffer_enqueue("foo", 3);
+   history_buffer_enqueue("bar", 3);
+   history_buffer_enqueue("bazz", 4);
    
-   mu_assert_int_eq(5, history->size);
-   mu_assert(history->tail->next == NULL, "Tail next should be NULL");
-   mu_assert(history_buffer_contains(history, "bazz", 4), "Should contain 'bazz'");
+   mu_assert_int_eq(5, history_buffer_size());
+   mu_assert(history_buffer_contains("bazz", 4), "Should contain 'bazz'");
    
-   destroy_history_buffer(history);
+   history_buffer_cleanup();
 }
 
 MU_TEST(test_overflow_buffer) {
-   history_buffer* history = create_history_buffer(5);
+   history_buffer_init(5);
    
-   history_buffer_enqueue(history, "hello", 5);
-   history_buffer_enqueue(history, "world", 5);
-   history_buffer_enqueue(history, "foo", 3);
-   history_buffer_enqueue(history, "bar", 3);
-   history_buffer_enqueue(history, "bazz", 4);
-   history_buffer_enqueue(history, "toto", 4); 
+   history_buffer_enqueue("hello", 5);
+   history_buffer_enqueue("world", 5);
+   history_buffer_enqueue("foo", 3);
+   history_buffer_enqueue("bar", 3);
+   history_buffer_enqueue("bazz", 4);
+   history_buffer_enqueue("toto", 4); 
    
-   mu_assert(!history_buffer_contains(history, "hello", 5), "Should not contain 'hello'");
-   mu_assert_int_eq(5, history->size);
+   mu_assert(!history_buffer_contains("hello", 5), "Should not contain 'hello'");
+   mu_assert_int_eq(5, history_buffer_size());
    
-   destroy_history_buffer(history);
+   history_buffer_cleanup();
 }
 
 MU_TEST(test_remove_element) {
-   history_buffer* history = create_history_buffer(5);
+   history_buffer_init(5);
    
-   history_buffer_enqueue(history, "hello", 5);
-   history_buffer_enqueue(history, "world", 5);
-   history_buffer_enqueue(history, "foo", 3);
-   history_buffer_enqueue(history, "bar", 3);
-   history_buffer_enqueue(history, "bazz", 4);
+   history_buffer_enqueue("hello", 5);
+   history_buffer_enqueue("world", 5);
+   history_buffer_enqueue("foo", 3);
+   history_buffer_enqueue("bar", 3);
+   history_buffer_enqueue("bazz", 4);
    
-   history_buffer_remove(history, "foo", 3);
+   history_buffer_remove("foo", 3);
    
-   mu_assert_int_eq(4, history->size);
-   mu_assert(!history_buffer_contains(history, "foo", 3), "Should not contain 'foo'");
+   mu_assert_int_eq(4, history_buffer_size());
+   mu_assert(!history_buffer_contains("foo", 3), "Should not contain 'foo'");
    
-   destroy_history_buffer(history);
+   history_buffer_cleanup();
 }
 
 MU_TEST_SUITE(test_suite) {

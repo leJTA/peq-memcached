@@ -234,7 +234,7 @@ maintainer-clean-local:
 	-rm -r gcov-report
 	-rm 3q_history_buffer_test
 
-TEST_3Q_FLAGS = -Wall -Wextra -Wpedantic -g -O0 -fsanitize=address --coverage
+TEST_3Q_FLAGS = -Wall -Wextra -Wpedantic -g -O0 -fsanitize=address --coverage -DUNIT_TESTING
 
 test-3q:
 	$(CC) $(TEST_3Q_FLAGS) 3q_history_buffer.c 3q_history_buffer.t.c -lrt -lgcov -o 3q_history_buffer_test

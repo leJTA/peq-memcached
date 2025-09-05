@@ -3,6 +3,28 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <pthread.h>
+
+// forward declaration
+typedef struct history_item history_item;
+typedef struct history_buffer history_buffer;
+
+// type definition
+struct history_item {
+   char* key;
+   uint8_t nkey;
+   history_item* next;
+};
+
+struct history_buffer {
+   history_item* head;
+   history_item* tail;
+   size_t capacity;
+   size_t size;
+};
+
+static history_buffer* _history = NULL;
+static pthread_mutex_t _history_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void destroy_history_item(history_item* hi)
 {
@@ -10,24 +32,38 @@ static void destroy_history_item(history_item* hi)
    free(hi);
 }
 
-history_buffer* create_history_buffer(size_t capacity)
+bool history_buffer_init(size_t capacity)
 {
-   if(capacity < 1) return NULL;
+   if(capacity < 1) {
+      return false;
+   }
 
-   history_buffer* history = malloc(sizeof(history_buffer));
-   history->head = NULL;
-   history->tail = NULL;
-   history->capacity = capacity;
-   history->size = 0;
+   _history = malloc(sizeof(history_buffer));
+   _history->head = NULL;
+   _history->tail = NULL;
+   _history->capacity = capacity;
+   _history->size = 0;
 
-   return history;
+   return true;
 }
 
-void destroy_history_buffer(history_buffer* history)
+#ifdef UNIT_TESTING
+void* history_buffer_tail()
 {
-   if (history == NULL) return;
+   return _history->tail;
+}
 
-   history_item* hi = history->head;
+void* history_buffer_head()
+{
+   return _history->head;
+}
+#endif // UNIT_TESTING
+
+void history_buffer_cleanup(void)
+{
+   if (_history == NULL) return;
+
+   history_item* hi = _history->head;
    history_item* nxt = NULL;
    while (hi != NULL)
    {
@@ -35,13 +71,14 @@ void destroy_history_buffer(history_buffer* history)
       destroy_history_item(hi);
       hi = nxt;
    }
-   free(history);
+   free(_history);
+   _history = NULL;
 }
 
-void history_buffer_enqueue(history_buffer* history, char* key, uint8_t nkey)
+void history_buffer_enqueue(char* key, uint8_t nkey)
 {
-   if (history->size == history->capacity) {
-      history_buffer_dequeue(history);
+   if (_history->size == _history->capacity) {
+      history_buffer_dequeue();
    }
 
    history_item* hi = malloc(sizeof(history_item));
@@ -49,38 +86,38 @@ void history_buffer_enqueue(history_buffer* history, char* key, uint8_t nkey)
    memcpy(hi->key, key, nkey);
    hi->nkey = nkey;
 
-   if (history->head == NULL) {
-      history->head = hi;
-      history->tail = hi;
+   if (_history->head == NULL) {
+      _history->head = hi;
+      _history->tail = hi;
    }
    else {
-      history->tail->next = hi;
-      history->tail = hi;
+      _history->tail->next = hi;
+      _history->tail = hi;
    }
    hi->next = NULL;
 
-   history->size++;
+   _history->size++;
 }
 
-void history_buffer_dequeue(history_buffer* history)
+void history_buffer_dequeue(void)
 {
-   if (history->head == NULL) {
+   if (_history->head == NULL) {
       return;
    }
 
-   history_item* hi = history->head;
-   history->head = history->head->next;
-   if (history->head == NULL) {
-      history->tail = NULL;
+   history_item* hi = _history->head;
+   _history->head = _history->head->next;
+   if (_history->head == NULL) {
+      _history->tail = NULL;
    }
    destroy_history_item(hi);
 
-   history->size--;
+   _history->size--;
 }
 
-void history_buffer_remove(history_buffer* history, char* key, uint8_t nkey)
+void history_buffer_remove(char* key, uint8_t nkey)
 {
-   history_item* hi = history->head;
+   history_item* hi = _history->head;
    history_item* prev = NULL;
    
    while (hi != NULL)
@@ -91,7 +128,7 @@ void history_buffer_remove(history_buffer* history, char* key, uint8_t nkey)
          }
          
          if (hi->next == NULL) {
-            history->tail = prev;
+            _history->tail = prev;
          }
 
          destroy_history_item(hi);
@@ -101,17 +138,28 @@ void history_buffer_remove(history_buffer* history, char* key, uint8_t nkey)
       hi = hi->next;
    }
 
-   history->size--;
+   _history->size--;
 }
 
-bool history_buffer_is_empty(history_buffer* history)
+void history_buffer_lock(void)
 {
-   return (history->size == 0);
+   pthread_mutex_lock(&_history_lock);
 }
 
-bool history_buffer_contains(history_buffer* history, char* key, uint8_t nkey)
+void history_buffer_unlock(void)
 {
-   history_item* hi = history->head;
+   pthread_mutex_unlock(&_history_lock);
+}
+
+
+bool history_buffer_is_empty(void)
+{
+   return (_history->size == 0);
+}
+
+bool history_buffer_contains(char* key, uint8_t nkey)
+{
+   history_item* hi = _history->head;
    while (hi != NULL)
    {
       if (hi->nkey == nkey && memcmp(hi->key, key, nkey) == 0) {
@@ -120,4 +168,9 @@ bool history_buffer_contains(history_buffer* history, char* key, uint8_t nkey)
       hi = hi->next;
    }
    return false;
+}
+
+size_t history_buffer_size(void)
+{
+   return _history->size;
 }
