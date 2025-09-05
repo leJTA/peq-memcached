@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <pthread.h>
+#include <limits.h>
 
 // forward declaration
 typedef struct history_item history_item;
@@ -173,4 +174,14 @@ bool history_buffer_contains(char* key, uint8_t nkey)
 size_t history_buffer_size(void)
 {
    return _history->size;
+}
+
+size_t history_buffer_capacity(void)
+{
+   return _history->capacity;
+}
+
+size_t history_buffer_max_mem_usage(void)
+{
+   return sizeof(history_buffer) + _history->capacity * (sizeof(history_item) + UINT8_MAX * sizeof(char));
 }

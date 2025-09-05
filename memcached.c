@@ -63,6 +63,7 @@
 
 // BEGIN CODE (3Q)
 #include "3q_compressor.h"
+#include "3q_history_buffer.h"
 // END CODE (3Q)
 
 /*
@@ -5930,7 +5931,19 @@ int main (int argc, char **argv) {
 
     /* initialize other stuff */
     // BEGIN CODE (3Q)
-    compression_resources_init();
+    {
+        compression_resources_init();
+        // history should hold identifier for as many pages as would fit on 50% of the cache.
+        bool success = history_buffer_init((settings.maxbytes / settings.item_size_max) / 2);
+        if (!success) {
+            fprintf(stderr, "[ERROR] unable to init history buffer\n");
+        } 
+        if (settings.verbose >= 2) {
+            fprintf(stderr, "[INFO] history buffer can hold %ld items\n", history_buffer_capacity());
+            fprintf(stderr, "[INFO] history buffer max memory usage : %ld Bytes\n", history_buffer_max_mem_usage());
+        }
+        settings.maxbytes -= history_buffer_max_mem_usage();
+    }
     // END CODE (3Q)
     stats_init();
     logger_init();
@@ -6228,6 +6241,7 @@ int main (int argc, char **argv) {
 
     // BEGIN CODE (3Q)
     compression_resources_cleanup();
+    history_buffer_cleanup();
     // END CODE (3Q)
 
     free(meta);

@@ -20,6 +20,8 @@ void history_buffer_unlock(void);
 bool history_buffer_is_empty(void);
 bool history_buffer_contains(char* key, uint8_t nkey);
 size_t history_buffer_size(void);
+size_t history_buffer_capacity(void);
+size_t history_buffer_max_mem_usage(void);
 
 
 #endif // __3Q_HISTORY_BUFFER_H__
