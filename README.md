@@ -1,93 +1,126 @@
-# 3q-memcached
+# Memcached
 
+Memcached is a high performance multithreaded event-based key/value cache
+store intended to be used in a distributed system.
 
+See: https://memcached.org/about
 
-## Getting started
+A fun story explaining usage: https://memcached.org/tutorial
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+If you're having trouble, try the wiki: https://memcached.org/wiki
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+If you're trying to troubleshoot odd behavior or timeouts, see:
+https://memcached.org/timeouts
 
-## Add your files
+https://memcached.org/ is a good resource in general. Please use the mailing
+list to ask questions, github issues aren't seen by everyone!
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+## Dependencies
+
+* libevent - https://www.monkey.org/~provos/libevent/ (libevent-dev)
+* libseccomp (optional, experimental, linux) - enables process restrictions for
+  better security. Tested only on x86-64 architectures.
+* openssl (optional) - enables TLS support. need relatively up to date
+  version. pkg-config is needed to find openssl dependencies (such as -lz).
+
+## Building from tarball
+
+If you downloaded this from the tarball, compilation is the standard process:
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.inria.fr/damas/3q-memcached.git
-git branch -M main
-git push -uf origin main
+./configure
+make
+make test # optional
+make install
 ```
 
-## Integrate with your tools
+If you want TLS support, install OpenSSL's development packages and change the
+configure line:
 
-- [ ] [Set up project integrations](https://gitlab.inria.fr/damas/3q-memcached/-/settings/integrations)
+```
+./configure --enable-tls
+```
 
-## Collaborate with your team
+If you want to enable the memcached proxy:
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+```
+./configure --enable-proxy
+```
 
-## Test and Deploy
+## Building from git
 
-Use the built-in continuous integration in GitLab.
+To build memcached in your machine from local repo you will have to install
+autotools, automake and libevent. In a debian based system that will look
+like this
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+```
+sudo apt-get install autotools-dev automake libevent-dev
+```
 
-***
+After that you can build memcached binary using automake
 
-# Editing this README
+```
+cd memcached
+./autogen.sh
+./configure
+make
+make test
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+It should create the binary in the same folder, which you can run
 
-## Suggestions for a good README
+```
+./memcached
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+You can telnet into that memcached to ensure it is up and running
 
-## Name
-Choose a self-explaining name for your project.
+```
+telnet 127.0.0.1 11211
+stats
+```
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+IF BUILDING PROXY, AN EXTRA STEP IS NECESSARY:
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+The proxy has some additional vendor dependency code that we keep out of the
+tree.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+```
+cd memcached
+cd vendor
+./fetch.sh
+cd ..
+./autogen.sh
+./configure --enable-proxy
+make
+make test
+```
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+## Environment
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+Be warned that the -k (mlockall) option to memcached might be
+dangerous when using a large cache. Just make sure the memcached machines
+don't swap.  memcached does non-blocking network I/O, but not disk.  (it
+should never go to disk, or you've lost the whole point of it)
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+## Build status
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+See https://build.memcached.org/ for multi-platform regression testing status.
+
+## Bug reports
+
+Feel free to use the issue tracker on github.
+
+**If you are reporting a security bug** please contact a maintainer privately.
+We follow responsible disclosure: we handle reports privately, prepare a
+patch, allow notifications to vendor lists. Then we push a fix release and your
+bug can be posted publicly with credit in our release notes and commit
+history.
+
+## Website
+
+* https://www.memcached.org
 
 ## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+See https://github.com/memcached/memcached/wiki/DevelopmentRepos
