@@ -5933,7 +5933,7 @@ int main (int argc, char **argv) {
     // BEGIN CODE (3Q)
     {
         compression_resources_init();
-        // history should hold identifier for as many pages as would fit on 50% of the cache.
+        // history should hold identifier for as many pages as would fit on 50% of the cache (Johnson and Shasha, 1994).
         bool success = history_buffer_init((settings.maxbytes / settings.item_size_max) / 2);
         if (!success) {
             fprintf(stderr, "[ERROR] unable to init history buffer\n");
