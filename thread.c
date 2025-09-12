@@ -887,9 +887,12 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
     it = do_item_get(key, nkey, hv, t, do_update);
     
     // BEGIN CODE (3Q)
-    // if (it && do_decompress_item(&it, t) && settings.verbose >= 2) {
-    //     fprintf(stderr, "[DEBUG] item decompressed and moved to slabs class %d\n", it->slabs_clsid);
-    // }
+    if (it && ITEM_lruid(it) == COLD_LRU && do_decompress_item(&it, t)) {
+        it->it_flags = (it->it_flags | HOT_LRU) & (~COLD_LRU);
+        if (settings.verbose >= 2) {
+            fprintf(stderr, "[DEBUG] item decompressed and moved to slabs class %d\n", it->slabs_clsid);
+        }
+    }
     // END CODE (3Q)
     
     item_unlock(hv);
