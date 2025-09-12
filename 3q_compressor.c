@@ -63,7 +63,7 @@ void compression_resources_cleanup(void)
 bool do_compress_item(item** ptr, LIBEVENT_THREAD* t)
 {
 	item* it = *ptr;
-	// assert(ITEM_lruid(it) | COLD_LRU);
+	assert(ITEM_lruid(it) != COLD_LRU);
 
 	struct compression_resources rc = _rcs[t->thread_baseid];
 	size_t compressed_size = 0;
@@ -123,7 +123,7 @@ bool do_compress_item(item** ptr, LIBEVENT_THREAD* t)
 bool do_decompress_item(item** ptr, LIBEVENT_THREAD* t)
 {
 	item* it = *ptr;
-	// assert(ITEM_lruid(it) | COLD_LRU);
+	assert(ITEM_lruid(it) == COLD_LRU);
 
 	struct compression_resources rc = _rcs[t->thread_baseid];
 	size_t decompressed_size = 0;

@@ -16,6 +16,11 @@
 #include <unistd.h>
 #include <poll.h>
 
+// BEGIN CODE (3Q)
+#include "3q_compressor.h"
+#include "3q_history_buffer.h"
+// END CODE (3Q)
+
 /* Forward Declarations */
 static void item_link_q(item *it);
 static void item_unlink_q(item *it);
@@ -557,10 +562,24 @@ void do_item_update(item *it) {
                 it->time = current_time;
                 item_unlink_q(it);
                 it->slabs_clsid = ITEM_clsid(it);
-                it->slabs_clsid |= WARM_LRU;
+                // it->slabs_clsid |= WARM_LRU;
+
+                // BEGIN CODE (3Q)
+                it->slabs_clsid |= HOT_LRU;
+                // TODO : decompress item
+                // END CODE (3Q)
+                
                 it->it_flags &= ~ITEM_ACTIVE;
-                item_link_q_warm(it);
-            } else {
+                item_link_q(it);
+            // BEGIN CODE (3Q)
+            } else if (ITEM_lruid(it) == WARM_LRU) {
+                it->time = current_time;
+                // move item to the top of WARM_LRU
+                item_unlink_q(it);
+                item_link_q(it);
+            }
+            // END CODE (3Q)
+            else {
                 it->time = current_time;
             }
         }
@@ -1808,11 +1827,8 @@ void change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
         uint32_t hv = hash(ITEM_key(old_it), old_it->nkey);
         item_replace(old_it, new_it, hv, ITEM_get_cas(old_it));
     }
-    
-    // 5. remove old item
-    // do_item_remove(old_it);
 
-    // 6. update item pointer
+    // 5. update item pointer
     *ptr = new_it;
 }
 // END CODE (3Q)
