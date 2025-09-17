@@ -888,7 +888,6 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
     
     // BEGIN CODE (3Q)
     if (it && ITEM_lruid(it) == COLD_LRU && do_decompress_item(&it, t)) {
-        it->it_flags = (it->it_flags | HOT_LRU) & (~COLD_LRU);
         if (settings.verbose >= 2) {
             fprintf(stderr, "[DEBUG] item decompressed and moved to slabs class %d\n", it->slabs_clsid);
         }
@@ -979,14 +978,6 @@ enum store_item_type store_item(item *item, int comm, LIBEVENT_THREAD *t, int *n
 
     hv = hash(ITEM_key(item), item->nkey);
     item_lock(hv);
-
-    // BEGIN CODE (3Q)
-    ;
-    // if (do_compress_item(&item, t) && settings.verbose >= 2) {
-    //     fprintf(stderr, "[DEBUG] item compressed and moved to slabs class %d\n", item->slabs_clsid);
-    // }
-    // END CODE (3Q)
-    
     ret = do_store_item(item, comm, t, hv, nbytes, cas, cas_in, cas_stale);
     item_unlock(hv);
     return ret;
