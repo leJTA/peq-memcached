@@ -442,12 +442,12 @@ static void item_link_q(item *it) {
     pthread_mutex_unlock(&lru_locks[it->slabs_clsid]);
 }
 
-static void item_link_q_warm(item *it) {
-    pthread_mutex_lock(&lru_locks[it->slabs_clsid]);
-    do_item_link_q(it);
-    itemstats[it->slabs_clsid].moves_to_warm++;
-    pthread_mutex_unlock(&lru_locks[it->slabs_clsid]);
-}
+// static void item_link_q_warm(item *it) {
+//     pthread_mutex_lock(&lru_locks[it->slabs_clsid]);
+//     do_item_link_q(it);
+//     itemstats[it->slabs_clsid].moves_to_warm++;
+//     pthread_mutex_unlock(&lru_locks[it->slabs_clsid]);
+// }
 
 static void do_item_unlink_q(item *it) {
     item **head, **tail;
@@ -554,31 +554,28 @@ void do_item_remove(item *it) {
 void do_item_update(item *it) {
     MEMCACHED_ITEM_UPDATE(ITEM_key(it), it->nkey, it->nbytes);
 
-    /* Hits to COLD_LRU immediately move to WARM. */
+    /* Hits to COLD_LRU immediately move to HOT (3Q) */
     if (settings.lru_segmented) {
         assert((it->it_flags & ITEM_SLABBED) == 0);
         if ((it->it_flags & ITEM_LINKED) != 0) {
+            // BEGIN CODE EDIT (3Q)
             if (ITEM_lruid(it) == COLD_LRU && (it->it_flags & ITEM_ACTIVE)) {
+                // This should be unreachable since items in COLD_LRU are moved out by a worker
+                // thread during get
+                assert(false);
                 it->time = current_time;
                 item_unlink_q(it);
                 it->slabs_clsid = ITEM_clsid(it);
-                // it->slabs_clsid |= WARM_LRU;
-
-                // BEGIN CODE (3Q)
-                it->slabs_clsid |= HOT_LRU;
-                // TODO : decompress item
-                // END CODE (3Q)
-                
                 it->it_flags &= ~ITEM_ACTIVE;
                 item_link_q(it);
-            // BEGIN CODE (3Q)
-            } else if (ITEM_lruid(it) == WARM_LRU) {
+            }
+            else if (ITEM_lruid(it) == WARM_LRU) {  // move item to the top of WARM_LRU
                 it->time = current_time;
-                // move item to the top of WARM_LRU
+                itemstats[it->slabs_clsid].moves_within_lru++;
                 item_unlink_q(it);
                 item_link_q(it);
             }
-            // END CODE (3Q)
+            // END CODE EDIT (3Q)
             else {
                 it->time = current_time;
             }
@@ -1179,28 +1176,21 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
             case WARM_LRU:
                 if (limit == 0)
                     limit = total_bytes * settings.warm_lru_pct / 100;
-                /* Rescue ACTIVE items aggressively */
-                if ((search->it_flags & ITEM_ACTIVE) != 0) {
-                    search->it_flags &= ~ITEM_ACTIVE;
-                    removed++;
-                    if (cur_lru == WARM_LRU) {
-                        itemstats[id].moves_within_lru++;
-                        do_item_unlink_q(search);
-                        do_item_link_q(search);
-                        do_item_remove(search);
-                        item_trylock_unlock(hold_lock);
-                    } else {
-                        /* Active HOT_LRU items flow to WARM */
-                        itemstats[id].moves_to_warm++;
-                        move_to_lru = WARM_LRU;
-                        do_item_unlink_q(search);
-                        it = search;
-                    }
-                } else if (sizes_bytes[id] > limit ||
+                // BEGIN CODE EDIT (3Q) 
+                if (sizes_bytes[id] > limit ||
                            current_time - search->time > max_age) {
-                    itemstats[id].moves_to_cold++;
-                    move_to_lru = COLD_LRU;
-                    do_item_unlink_q(search);
+                    if (cur_lru == WARM_LRU) {
+                        itemstats[id].moves_to_cold++;
+                        do_compress_item(&search, NULL);  // will move item to COLD
+                    }
+                    else {
+                        history_buffer_enqueue(ITEM_key(search), search->nkey);
+                        // itemstats[id].moves_to_history++;
+                        do_item_unlink_nolock(search, hv);
+                        if (settings.slab_automove == 2) {
+                            slabs_reassign(settings.slab_rebal, -1, orig_id, SLABS_REASSIGN_ALLOW_EVICTIONS);
+                        }
+                    }                    
                     it = search;
                     removed++;
                     break;
@@ -1208,6 +1198,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                     /* Don't want to move to COLD, not active, bail out */
                     it = search;
                 }
+                // END CODE EDIT (3Q)
                 break;
             case COLD_LRU:
                 it = search; /* No matter what, we're stopping */
@@ -1820,6 +1811,8 @@ void change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
     // 3. update new item values
     new_it->it_flags &= ~ITEM_LINKED;
     new_it->slabs_clsid = id;
+    // compression => move to COLD_LRU, decompression => move to HOT_LRU
+    new_it->slabs_clsid |= (new_nbytes > old_it->nbytes) ? HOT_LRU : COLD_LRU;
     new_it->nbytes = new_nbytes;
     
     // 4. replace old item with new item in hash table

@@ -1715,6 +1715,15 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
         }
 
         if (do_store) {
+            // BEGIN CODE (3Q)
+            // if an item is in the history buffer, it is inserted directly in the warm buffer
+            history_buffer_lock();
+            if (history_buffer_contains(ITEM_key(it), it->nkey)) {
+                it->it_flags |= WARM_LRU;
+                history_buffer_remove(ITEM_key(it), it->nkey);
+            }
+            history_buffer_unlock();
+            // END CODE (3Q)
             do_item_link(it, hv, cas_in);
             stored = STORED;
         }

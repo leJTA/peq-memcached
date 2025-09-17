@@ -20,16 +20,19 @@ struct compression_resources {
 };
 
 static struct compression_resources* _rcs;
+static int _num_threads;
 
 void compression_resources_init(void)
 {
-	_rcs = calloc(settings.num_threads, sizeof(struct compression_resources));
+	// +1 for the LRU maintainer thread
+	_num_threads = settings.num_threads + 1;
+	_rcs = calloc(_num_threads, sizeof(struct compression_resources));
 	if (_rcs == NULL) {
 		fprintf(stderr, "ERROR: unable to allocate memory for compression ressources\n");
 		exit(EXIT_FAILURE);
 	}
 
-	for (int i = 0; i < settings.num_threads; ++i) {
+	for (int i = 0; i < _num_threads; ++i) {
 		switch (settings.comp_algo) {
 		case COMPRESSION_ZSTD:
 			_rcs[i].buffer_size = ZSTD_compressBound(settings.item_size_max);
@@ -51,7 +54,7 @@ void compression_resources_init(void)
 
 void compression_resources_cleanup(void)
 {
-	for (int i = 0; i < settings.num_threads; ++i) {
+	for (int i = 0; i < _num_threads; ++i) {
 		free(_rcs[i].buffer);
 		if (settings.comp_algo == COMPRESSION_ZSTD) {
 			ZSTD_freeCCtx(_rcs[i].cctx);
@@ -63,9 +66,10 @@ void compression_resources_cleanup(void)
 bool do_compress_item(item** ptr, LIBEVENT_THREAD* t)
 {
 	item* it = *ptr;
-	assert(ITEM_lruid(it) != COLD_LRU);
+	assert(ITEM_lruid(it) == WARM_LRU);
 
-	struct compression_resources rc = _rcs[t->thread_baseid];
+	int tid = (t != NULL) ? t->thread_baseid : _num_threads - 1;
+	struct compression_resources rc = _rcs[tid];
 	size_t compressed_size = 0;
 	size_t old_ntotal = ITEM_ntotal(it);
 	size_t new_ntotal = 0;
