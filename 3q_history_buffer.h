@@ -10,15 +10,15 @@ bool history_buffer_init(size_t capacity);
 void history_buffer_cleanup(void);
 
 // Manipulators
-void history_buffer_enqueue(char* key, uint8_t nkey);
+void history_buffer_enqueue(const char* key, uint8_t nkey);
 void history_buffer_dequeue(void);
-void history_buffer_remove(char* key, uint8_t nkey);
+void history_buffer_remove(const char* key, uint8_t nkey);
 void history_buffer_lock(void);
 void history_buffer_unlock(void);
 
 // Accessors
 bool history_buffer_is_empty(void);
-bool history_buffer_contains(char* key, uint8_t nkey);
+bool history_buffer_contains(const char* key, uint8_t nkey);
 size_t history_buffer_size(void);
 size_t history_buffer_capacity(void);
 size_t history_buffer_max_mem_usage(void);
