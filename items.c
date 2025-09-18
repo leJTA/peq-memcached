@@ -186,7 +186,14 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
             // As of this writing, total_bytes isn't at all used with COLD_LRU.
             if (lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL) <= 0) {
                 if (settings.lru_segmented) {
-                    lru_pull_tail(id, HOT_LRU, 0, 0, 0, NULL);
+                    // BEGIN CODE EDIT (3Q)
+                    if (id & WARM_LRU) {
+                        lru_pull_tail(id, WARM_LRU, 0, 0, 0, NULL);
+                    }
+                    else {
+                        lru_pull_tail(id, HOT_LRU, 0, 0, 0, NULL);
+                    }
+                    // END CODE EDIT (3Q)
                 } else {
                     break;
                 }
@@ -266,6 +273,13 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
     }
 
     unsigned int id = slabs_clsid(ntotal);
+    // BEGIN CODE (3Q)
+    history_buffer_lock();
+    if (history_buffer_contains(key, nkey)) {
+        id |= WARM_LRU;
+    }
+    history_buffer_unlock();
+    // END CODE (3Q)
     unsigned int hdr_id = 0;
     if (id == 0)
         return 0;
@@ -1184,6 +1198,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                         do_compress_item(&search, NULL);  // will move item to COLD
                     }
                     else {
+                        assert(!history_buffer_contains(ITEM_key(search), search->nkey));
                         history_buffer_enqueue(ITEM_key(search), search->nkey);
                         // itemstats[id].moves_to_history++;
                         do_item_unlink_nolock(search, hv);
@@ -1202,7 +1217,8 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                 break;
             case COLD_LRU:
                 it = search; /* No matter what, we're stopping */
-                if (flags & LRU_PULL_EVICT) {
+                limit = total_bytes * (100 - settings.hot_lru_pct - settings.warm_lru_pct) / 100; // CODE (3Q)
+                if (flags & LRU_PULL_EVICT || sizes_bytes[id] > limit) { // CODE EDIT (3Q)
                     if (settings.evict_to_free == 0) {
                         /* Don't think we need a counter for this. It'll OOM.  */
                         break;
@@ -1228,13 +1244,6 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                     /* Keep a reference to this item and return it. */
                     ret_it->it = it;
                     ret_it->hv = hv;
-                } else if ((search->it_flags & ITEM_ACTIVE) != 0
-                        && settings.lru_segmented) {
-                    itemstats[id].moves_to_warm++;
-                    search->it_flags &= ~ITEM_ACTIVE;
-                    move_to_lru = WARM_LRU;
-                    do_item_unlink_q(search);
-                    removed++;
                 }
                 break;
             case TEMP_LRU:

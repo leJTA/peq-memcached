@@ -64,7 +64,7 @@ void history_buffer_cleanup(void)
    _history = NULL;
 }
 
-void history_buffer_enqueue(char* key, uint8_t nkey)
+void history_buffer_enqueue(const char* key, uint8_t nkey)
 {
    if (_history->size == _history->capacity) {
       history_buffer_dequeue();
@@ -104,7 +104,7 @@ void history_buffer_dequeue(void)
    _history->size--;
 }
 
-void history_buffer_remove(char* key, uint8_t nkey)
+void history_buffer_remove(const char* key, uint8_t nkey)
 {
    history_item* hi = _history->head;
    history_item* prev = NULL;
@@ -146,7 +146,7 @@ bool history_buffer_is_empty(void)
    return (_history->size == 0);
 }
 
-bool history_buffer_contains(char* key, uint8_t nkey)
+bool history_buffer_contains(const char* key, uint8_t nkey)
 {
    history_item* hi = _history->head;
    while (hi != NULL)
