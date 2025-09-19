@@ -100,6 +100,21 @@ MU_TEST(test_remove_element) {
    history_buffer_cleanup();
 }
 
+MU_TEST(test_reinsert_element) {
+   history_buffer_init(5);
+
+   history_buffer_enqueue("hello", 5);
+   history_buffer_remove("hello", 5);
+   history_buffer_enqueue("world", 5);
+   history_buffer_enqueue("foo", 3);
+   history_buffer_enqueue("hello", 5);
+
+   mu_assert_int_eq(3, history_buffer_size());
+   mu_assert(history_buffer_contains("hello", 5), "Should contain 'hello'");
+
+   history_buffer_cleanup();
+}
+
 MU_TEST_SUITE(test_suite) {
    MU_RUN_TEST(test_create_empty_buffer);
    MU_RUN_TEST(test_create_buffer_with_invalid_capacity);
@@ -108,6 +123,7 @@ MU_TEST_SUITE(test_suite) {
    MU_RUN_TEST(test_fill_buffer);
    MU_RUN_TEST(test_overflow_buffer);
    MU_RUN_TEST(test_remove_element);
+   MU_RUN_TEST(test_reinsert_element);
 }
 
 int main() {
