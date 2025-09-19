@@ -1186,13 +1186,12 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
          */
         switch (cur_lru) {
             case HOT_LRU:
-                limit = total_bytes * settings.hot_lru_pct / 100;
+                limit = settings.maxbytes * settings.hot_lru_pct / 100;
             case WARM_LRU:
                 if (limit == 0)
-                    limit = total_bytes * settings.warm_lru_pct / 100;
-                // BEGIN CODE EDIT (3Q) 
-                if (sizes_bytes[id] > limit ||
-                           current_time - search->time > max_age) {
+                    limit = settings.maxbytes * settings.warm_lru_pct / 100;
+                // BEGIN CODE EDIT (3Q)
+                if (sizes_bytes[id] > limit) {
                     if (cur_lru == WARM_LRU) {
                         itemstats[id].moves_to_cold++;
                         do_compress_item(&search, NULL);  // will move item to COLD
@@ -1217,7 +1216,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                 break;
             case COLD_LRU:
                 it = search; /* No matter what, we're stopping */
-                limit = total_bytes * (100 - settings.hot_lru_pct - settings.warm_lru_pct) / 100; // CODE (3Q)
+                limit = settings.maxbytes * (100 - settings.hot_lru_pct - settings.warm_lru_pct) / 100; // CODE (3Q)
                 if (flags & LRU_PULL_EVICT || sizes_bytes[id] > limit) { // CODE EDIT (3Q)
                     if (settings.evict_to_free == 0) {
                         /* Don't think we need a counter for this. It'll OOM.  */

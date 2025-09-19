@@ -111,8 +111,11 @@ void history_buffer_remove(const char* key, uint8_t nkey)
    
    while (hi != NULL)
    {
-      if (memcmp(hi->key, key, nkey) == 0) {
-         if (prev != NULL) {
+      if (hi->nkey == nkey && memcmp(hi->key, key, nkey) == 0) {
+         if (prev == NULL) {
+            _history->head = hi->next;
+         }
+         else {
             prev->next = hi->next;
          }
          
