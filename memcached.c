@@ -1719,7 +1719,7 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
             // if an item is in the history buffer, it is inserted directly in the warm buffer
             history_buffer_lock();
             if (history_buffer_contains(ITEM_key(it), it->nkey)) {
-                it->it_flags |= WARM_LRU;
+                it->slabs_clsid |= WARM_LRU;
                 history_buffer_remove(ITEM_key(it), it->nkey);
             }
             history_buffer_unlock();

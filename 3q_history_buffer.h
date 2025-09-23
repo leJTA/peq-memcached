@@ -17,6 +17,7 @@ void history_buffer_lock(void);
 void history_buffer_unlock(void);
 
 // Accessors
+void history_buffer_print(void);
 bool history_buffer_is_empty(void);
 bool history_buffer_contains(const char* key, uint8_t nkey);
 size_t history_buffer_size(void);

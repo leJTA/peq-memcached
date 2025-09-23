@@ -180,6 +180,22 @@ size_t history_buffer_max_mem_usage(void)
    return sizeof(history_buffer) + _history->capacity * (sizeof(history_item) + UINT8_MAX * sizeof(char));
 }
 
+void history_buffer_print(void)
+{
+   history_item* hi = _history->head;
+   fprintf(stderr, "history buffer [");
+   while (hi != NULL)
+   {
+      fprintf(stderr, "%.*s", hi->nkey, hi->key);
+      hi = hi->next;
+      if (hi != NULL) {
+         fprintf(stderr, ", ");
+      }
+   }
+   fprintf(stderr, "]\n");
+   
+}
+
 #ifdef UNIT_TESTING
 void* history_buffer_tail()
 {
