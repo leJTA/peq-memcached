@@ -274,13 +274,6 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
     }
 
     unsigned int id = slabs_clsid(ntotal);
-    // BEGIN CODE (3Q)
-    history_buffer_lock();
-    if (history_buffer_contains(key, nkey)) {
-        id |= WARM_LRU;
-    }
-    history_buffer_unlock();
-    // END CODE (3Q)
     unsigned int hdr_id = 0;
     if (id == 0)
         return 0;
@@ -333,7 +326,13 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
             exptime - current_time <= settings.temporary_ttl) {
         id |= TEMP_LRU;
     } else if (settings.lru_segmented) {
-        id |= HOT_LRU;
+        // BEGIN CODE (3Q)
+        history_buffer_lock();
+        if (history_buffer_contains(key, nkey)) {
+            id |= WARM_LRU;
+        }
+        history_buffer_unlock();
+        // END CODE (3Q)
     } else {
         /* There is only COLD in compat-mode */
         id |= COLD_LRU;
