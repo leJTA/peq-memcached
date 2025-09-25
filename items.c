@@ -1195,10 +1195,12 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                 if (sizes_bytes[id] > limit) {
                     if (cur_lru == WARM_LRU) {
                         itemstats[id].moves_to_cold++;
-                        // move_to_lru = COLD_LRU;
-                        // do_item_unlink_q(search);
-                        do_compress_item(&search, NULL);  // will move item to COLD
-                        item_trylock_unlock(hold_lock);
+                        if (!do_compress_item(&search, NULL)) { // if false, item has been moved to COLD
+                            do_item_unlink_nolock(search, hv);
+                            if (settings.slab_automove == 2) {
+                                slabs_reassign(settings.slab_rebal, -1, orig_id, SLABS_REASSIGN_ALLOW_EVICTIONS);
+                            }
+                        }
                     }
                     else {
                         history_buffer_lock();
@@ -1210,8 +1212,8 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                         if (settings.slab_automove == 2) {
                             slabs_reassign(settings.slab_rebal, -1, orig_id, SLABS_REASSIGN_ALLOW_EVICTIONS);
                         }
-                        print_cache(ITEM_clsid(search));
                     }
+                    print_cache(ITEM_clsid(search));
                     it = search;
                     removed++;
                     break;
@@ -1267,7 +1269,6 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
             it->slabs_clsid = ITEM_clsid(it);
             it->slabs_clsid |= move_to_lru;
             item_link_q(it);
-            print_cache(ITEM_clsid(it));    // DEBUG (3Q)
         }
         if ((flags & LRU_PULL_RETURN_ITEM) == 0) {
             do_item_remove(it);
@@ -1827,14 +1828,22 @@ void change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
     // 3. update new item values
     new_it->it_flags &= ~ITEM_LINKED;
     new_it->slabs_clsid = id;
-    // compression => move to COLD_LRU, decompression => move to HOT_LRU
-    new_it->slabs_clsid |= (new_nbytes > old_it->nbytes) ? HOT_LRU : COLD_LRU;
     new_it->nbytes = new_nbytes;
-    
-    // 4. replace old item with new item in hash table
-    if (old_it->it_flags & ITEM_LINKED) {
-        uint32_t hv = hash(ITEM_key(old_it), old_it->nkey);
-        item_replace(old_it, new_it, hv, ITEM_get_cas(old_it));
+
+    // 4. replace old item with new item
+    assert(old_it->it_flags & ITEM_LINKED);
+    uint32_t hv = hash(ITEM_key(old_it), old_it->nkey);
+    if (new_nbytes < old_it->nbytes) {
+        // compression, move to COLD
+        new_it->slabs_clsid |= COLD_LRU;
+        do_item_unlink_nolock(old_it, hv);  // WARM LRU is already locked from lru_pull_tail
+        do_item_link(new_it, hv, ITEM_get_cas(old_it)); // COLD LRU is not locked
+    }
+    else {
+        // decompression, move to HOT
+        new_it->slabs_clsid |= HOT_LRU;
+        do_item_unlink(old_it, hv);
+        do_item_link(new_it, hv, ITEM_get_cas(old_it));
     }
 
     // 5. update item pointer
@@ -1868,16 +1877,19 @@ static void print_cache(int slabs_clsid)
     }
     fprintf(stderr, "]\n");
 
-    it = heads[slabs_clsid|COLD_LRU];
-    fprintf(stderr, "COLD_LRU : [");
-    while (it != NULL) {
-        fprintf(stderr, "%.*s", it->nkey, ITEM_key(it));
-        it = it->next;
-        if (it != NULL) {
-            fprintf(stderr, ", ");
+    fprintf(stderr, "COLD_LRU : [ ");
+    for (int j = 0; j < LARGEST_ID; ++j) {
+        it = heads[j|COLD_LRU];
+        
+        if (it == NULL) continue;
+
+        while (it != NULL) {
+            fprintf(stderr, "%.*s ", it->nkey, ITEM_key(it));
+            it = it->next;
         }
     }
     fprintf(stderr, "]\n");
+    
     fprintf(stderr, "======================================\n");
 
 }

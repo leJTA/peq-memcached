@@ -276,7 +276,7 @@ static void settings_init(void) {
     settings.watch_enabled = true;
     settings.read_buf_mem_limit = 0;
     // BEGIN CODE (3Q)
-    settings.compression_ratio_min = 2.0;
+    settings.compression_ratio_min = 1.2;
     settings.comp_algo = COMPRESSION_ZSTD;
     // END CODE (3Q)
 #ifdef MEMCACHED_DEBUG
@@ -1676,6 +1676,11 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
         }
 
         if (do_store) {
+            // BEGIN CODE (3Q)
+            if (old_it->slabs_clsid & WARM_LRU) {
+                it->slabs_clsid |= WARM_LRU;
+            }
+            // END CODE (3Q)
             STORAGE_delete(t->storage, old_it);
             item_replace(old_it, it, hv, cas_in);
             stored = STORED;
