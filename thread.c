@@ -905,16 +905,7 @@ item *item_get_locked(const char *key, const size_t nkey, LIBEVENT_THREAD *t, co
     item *it;
     *hv = hash(key, nkey);
     item_lock(*hv);
-    it = do_item_get(key, nkey, *hv, t, do_update);
-
-    // BEGIN CODE (3Q)
-    if (it && ITEM_lruid(it) == COLD_LRU && do_decompress_item(&it, t)) {
-        if (settings.verbose >= 2) {
-            fprintf(stderr, "[DEBUG] item decompressed and moved to slabs class %d\n", it->slabs_clsid);
-        }
-    }
-    // END CODE (3Q)
-    
+    it = do_item_get(key, nkey, *hv, t, do_update);    
     return it;
 }
 

@@ -188,12 +188,7 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
             if (lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL) <= 0) {
                 if (settings.lru_segmented) {
                     // BEGIN CODE EDIT (3Q)
-                    if (id & WARM_LRU) {
-                        lru_pull_tail(id, WARM_LRU, 0, 0, 0, NULL);
-                    }
-                    else {
-                        lru_pull_tail(id, HOT_LRU, 0, 0, 0, NULL);
-                    }
+                    lru_pull_tail(id, HOT_LRU, 0, LRU_PULL_EVICT, 0, NULL);
                     // END CODE EDIT (3Q)
                 } else {
                     break;
@@ -569,22 +564,11 @@ void do_item_remove(item *it) {
 void do_item_update(item *it) {
     MEMCACHED_ITEM_UPDATE(ITEM_key(it), it->nkey, it->nbytes);
 
-    /* Hits to COLD_LRU immediately move to HOT (3Q) */
     if (settings.lru_segmented) {
         assert((it->it_flags & ITEM_SLABBED) == 0);
         if ((it->it_flags & ITEM_LINKED) != 0) {
             // BEGIN CODE EDIT (3Q)
-            if (ITEM_lruid(it) == COLD_LRU && (it->it_flags & ITEM_ACTIVE)) {
-                // This should be unreachable since items in COLD_LRU are moved out by a worker
-                // thread during get
-                assert(false);
-                it->time = current_time;
-                item_unlink_q(it);
-                it->slabs_clsid = ITEM_clsid(it);
-                it->it_flags &= ~ITEM_ACTIVE;
-                item_link_q(it);
-            }
-            else if (ITEM_lruid(it) == WARM_LRU) {  // move item to the top of WARM_LRU
+            if (ITEM_lruid(it) == WARM_LRU) {  // move item to the top of WARM_LRU
                 it->time = current_time;
                 itemstats[it->slabs_clsid].moves_within_lru++;
                 item_unlink_q(it);
@@ -1075,19 +1059,14 @@ void do_item_bump(LIBEVENT_THREAD *t, item *it, const uint32_t hv) {
      * FETCHED tells if an item has ever been active.
      */
     if (settings.lru_segmented) {
-        if ((it->it_flags & ITEM_ACTIVE) == 0) {
-            if ((it->it_flags & ITEM_FETCHED) == 0) {
-                it->it_flags |= ITEM_FETCHED;
-            } else {
-                it->it_flags |= ITEM_ACTIVE;
-                if (ITEM_lruid(it) != COLD_LRU) {
-                    it->time = current_time; // only need to bump time.
-                } else if (!lru_bump_async(t->lru_bump_buf, it, hv)) {
-                    // add flag before async bump to avoid race.
-                    it->it_flags &= ~ITEM_ACTIVE;
-                }
-            }
+        // BEGIN CODE EDIT (3Q)
+        if (ITEM_lruid(it) == HOT_LRU) {
+            it->time = current_time; // only need to bump time.
         }
+        else if (ITEM_lruid(it) == WARM_LRU) {
+            lru_bump_async(t->lru_bump_buf, it, hv);
+        }
+        // END CODE EDIT (3Q)
     } else {
         it->it_flags |= ITEM_FETCHED;
         do_item_update(it);
@@ -1192,7 +1171,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
             case WARM_LRU:
                 if (limit == 0)
                     limit = settings.maxbytes * settings.warm_lru_pct / 100;
-                if (sizes_bytes[id] > limit) {
+                if (sizes_bytes[id] > limit || flags & LRU_PULL_EVICT) {
                     if (cur_lru == WARM_LRU) {
                         itemstats[id].moves_to_cold++;
                         if (!do_compress_item(&search, NULL)) { // if false, item has been moved to COLD
@@ -1816,7 +1795,7 @@ void change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
     }
 
     // 1. allocate new slab
-    item* new_it = slabs_alloc(id, 0);
+    item* new_it = do_item_alloc_pull(new_ntotal, id);
     if (new_it == NULL) {
         fprintf(stderr, "[ERROR] slabs allocation failed\n");
         return;
