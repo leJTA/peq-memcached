@@ -183,7 +183,7 @@ size_t history_buffer_max_mem_usage(void)
 void history_buffer_print(void)
 {
    history_item* hi = _history->head;
-   fprintf(stderr, "history buffer [");
+   fprintf(stderr, "history buffer {");
    while (hi != NULL)
    {
       fprintf(stderr, "%.*s", hi->nkey, hi->key);
@@ -192,7 +192,7 @@ void history_buffer_print(void)
          fprintf(stderr, ", ");
       }
    }
-   fprintf(stderr, "]\n");
+   fprintf(stderr, "}\n");
    
 }
 
