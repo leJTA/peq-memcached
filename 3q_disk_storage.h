@@ -7,6 +7,7 @@
 
 // CREATORS
 void disk_storage_init(const char* base_dir);
+void disk_storage_cleanup(void);
 
 // MEANIPULATORS
 

@@ -244,5 +244,6 @@ test-3q:
 
 	./3q_history_buffer_test
 	./3q_disk_storage_test
-	gcovr --root . --exclude *.t.c --exclude third_party/
-	gcovr --root . --exclude *.t.c --exclude third_party/ --html-details -o gcov-report/
+
+	gcovr --root . --exclude '.*\.t\.c' --exclude third_party/
+	gcovr --root . --exclude '.*\.t\.c' --exclude third_party/ --html-details -o gcov-report/

@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <string.h>
 
 static char* _base_dir;
 static char* _filename;
@@ -17,13 +20,29 @@ void disk_storage_init(const char* base_dir)
       _base_dir = strdup(base_dir);
    }
    else {
-      _base_dir = "items-data";
+      _base_dir = strdup("/tmp/3q-items-data");
+   }
+   if (mkdir(_base_dir, 0755) != 0) {
+      if (errno != EEXIST) {
+         fprintf(stderr, "[ERROR] Unable to create folder for items data\n");
+         disk_storage_cleanup();
+         exit(EXIT_FAILURE);
+      }
    }
    // +1 for directory separator "/"
    // +UINT8_MAX for the maxlen of the key
    // +1 for the end of the char '\0'
    _maxlen = strlen(_base_dir) + 1 + UINT8_MAX + 1;
    _filename = (char*)calloc(_maxlen, sizeof(char));
+}
+
+void disk_storage_cleanup(void)
+{
+   char cmd[512];
+   snprintf(cmd, sizeof(cmd), "rm -rf %s", _base_dir);
+   system(cmd);
+   free(_base_dir);
+   free(_filename);
 }
 
 static void safe_key_copy(const char* key, uint8_t nkey)
@@ -42,11 +61,10 @@ bool disk_storage_read(void* ptr, int nbytes, const char* key, uint8_t nkey)
 {
    safe_key_copy(key, nkey);
    snprintf(_filename, _maxlen, "%s/%s", _base_dir, _safe_key);
-   strncat(_filename, key, nkey);
    FILE* file = fopen(_filename, "r");
 
-   if (!file) return false;
-   size_t count = fread((char*)ptr, nbytes, sizeof(char), file);
+   if (file == NULL) return false;
+   size_t count = fread((char*)ptr, sizeof(char), nbytes, file);
    fclose(file);
 
    return (count == (size_t)nbytes);
@@ -58,8 +76,8 @@ bool disk_storage_write(const void* ptr, int nbytes, const char* key, uint8_t nk
    snprintf(_filename, _maxlen, "%s/%s", _base_dir, _safe_key);
    FILE* file = fopen(_filename, "w");
 
-   if (!file) return false;
-   size_t count = fwrite((char*)ptr, nbytes, sizeof(char), file);
+   if (file == NULL) return false;
+   size_t count = fwrite((char*)ptr, sizeof(char), nbytes, file);
    fclose(file);
 
    return (count == (size_t)nbytes);
@@ -67,8 +85,9 @@ bool disk_storage_write(const void* ptr, int nbytes, const char* key, uint8_t nk
 
 bool disk_storage_delete(const char* key, uint8_t nkey)
 {
-   char* filename = strndup(key, nkey);
-   return (remove(filename) != 0);
+   safe_key_copy(key, nkey);
+   snprintf(_filename, _maxlen, "%s/%s", _base_dir, _safe_key);
+   return (remove(_filename) == 0);
 }
 
 #ifdef UNIT_TESTING
