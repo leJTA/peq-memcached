@@ -22,7 +22,7 @@ class ReplacementPolicyTestCase(unittest.TestCase):
 
       self.data = []
       for i in range(0, 16):
-         d = ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=512*2**10))
+         d = ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=512*2**10 - 2))
          self.data.append(d)
       return super().setUp()
    
