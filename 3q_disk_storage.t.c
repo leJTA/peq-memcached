@@ -49,11 +49,11 @@ MU_TEST(test_write_and_read) {
    int nbytes = 11;
    char* out = (char*)malloc(nbytes * sizeof(char));
 
-   bool s1 = disk_storage_write(in, nbytes, key, nkey);
-   bool s2 = disk_storage_read(out, nbytes, key, nkey);
+   size_t count1 = disk_storage_write(in, nbytes, key, nkey);
+   size_t count2 = disk_storage_read(out, nbytes, key, nkey);
 
-   mu_check(s1);
-   mu_check(s2);
+   mu_check(count1 == 11);
+   mu_check(count2 == 11);
    mu_assert(!strcmp(filename(), "/tmp/3q-test-dir/key0"), "Filename should match the key");
    mu_assert(memcmp(in, out, nbytes) == 0, "Input and output data are not equal");
 
@@ -70,13 +70,13 @@ MU_TEST(test_overwrite) {
    int nbytes = 11;
    char* out = (char*)malloc(nbytes * sizeof(char));
 
-   bool s1 = disk_storage_write(in, nbytes, key, nkey);
-   bool s2 = disk_storage_write(new_in, nbytes, key, nkey);
-   bool s3 = disk_storage_read(out, nbytes, key, nkey);
+   size_t count1 = disk_storage_write(in, nbytes, key, nkey);
+   size_t count2 = disk_storage_write(new_in, nbytes, key, nkey);
+   size_t count3 = disk_storage_read(out, nbytes, key, nkey);
 
-   mu_check(s1);
-   mu_check(s2);
-   mu_check(s3);
+   mu_check(count1 == 11);
+   mu_check(count2 == 11);
+   mu_check(count3 == 11);
    mu_assert(memcmp(new_in, out, nbytes) == 0, "New input and output data are not equal");
 
    free(out);
@@ -91,13 +91,13 @@ MU_TEST(test_delete) {
    int nbytes = 11;
    char* out = (char*)malloc(nbytes * sizeof(char));
 
-   bool s1 = disk_storage_write(in, nbytes, key, nkey);
-   bool s2 = disk_storage_delete(key, nkey);
-   bool s3 = disk_storage_read(out, nbytes, key, nkey);
+   size_t count1 = disk_storage_write(in, nbytes, key, nkey);
+   bool success = disk_storage_delete(key, nkey);
+   size_t count2 = disk_storage_read(out, nbytes, key, nkey);
 
-   mu_check(s1);
-   mu_check(s2);
-   mu_assert(!s3, "Data should not remains in the filesystem");
+   mu_check(count1 == 11);
+   mu_check(success);
+   mu_assert(count2 == 0, "Data should not remains in the filesystem");
 
    free(out);
    teardown();
@@ -110,15 +110,15 @@ MU_TEST(test_nonexistent_read) {
    int nbytes = 11;
    char* out = (char*)malloc(nbytes * sizeof(char));
 
-   bool s1 = disk_storage_read(out, nbytes, key, nkey);
+   size_t count = disk_storage_read(out, nbytes, key, nkey);
 
-   mu_assert(!s1, "Data should not exists in the filesystem");
+   mu_assert(count == 0, "Data should not exists in the filesystem");
 
    free(out);
    teardown();
 }
 
-MU_TEST(test_read_wrong_data_size) {
+MU_TEST(test_read_smaller_data_size) {
    setup();
    const char* key = "key0";
    uint8_t nkey = 4;
@@ -126,11 +126,11 @@ MU_TEST(test_read_wrong_data_size) {
    int nbytes = 11;
    char* out = (char*)malloc(nbytes * sizeof(char));
 
-   bool s1 = disk_storage_write(in, nbytes, key, nkey);
-   bool s2 = disk_storage_read(out, nbytes + 1, key, nkey);
+   size_t count1 = disk_storage_write(in, nbytes, key, nkey);
+   size_t count2 = disk_storage_read(out, nbytes + 11, key, nkey);
 
-   mu_check(s1);
-   mu_assert(!s2, "Wrong data size read should fail");
+   mu_check(count1 == 11);
+   mu_assert(count2 == 11, "Read data size smaller than nbytes should succeed");
 
    free(out);
    teardown();
@@ -144,11 +144,11 @@ MU_TEST(test_unsafe_key) {
    int nbytes = 11;
    char* out = (char*)malloc(nbytes * sizeof(char));
 
-   bool s1 = disk_storage_write(in, nbytes, key, nkey);
-   bool s2 = disk_storage_read(out, nbytes, key, nkey);
+   size_t count1 = disk_storage_write(in, nbytes, key, nkey);
+   size_t count2 = disk_storage_read(out, nbytes, key, nkey);
 
-   mu_check(s1);
-   mu_check(s2);
+   mu_check(count1 == 11);
+   mu_check(count2 == 11);
    mu_assert(!strcmp(filename(), "/tmp/3q-test-dir/_k_e_y_0"), "Filename should match the safe key");
    mu_assert(memcmp(in, out, nbytes) == 0, "Input and output data are not equal");
 
@@ -164,7 +164,7 @@ MU_TEST_SUITE(test_suite) {
    MU_RUN_TEST(test_overwrite);
    MU_RUN_TEST(test_delete);
    MU_RUN_TEST(test_nonexistent_read);
-   MU_RUN_TEST(test_read_wrong_data_size);
+   MU_RUN_TEST(test_read_smaller_data_size);
    MU_RUN_TEST(test_unsafe_key);
 }
 

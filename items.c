@@ -18,7 +18,9 @@
 
 // BEGIN CODE (3Q)
 #include "3q_compressor.h"
+#include "3q_buffer_pool.h"
 #include "3q_history_buffer.h"
+#include "3q_disk_storage.h"
 // END CODE (3Q)
 
 /* Forward Declarations */
@@ -41,6 +43,7 @@ typedef struct {
     uint64_t crawler_reclaimed;
     uint64_t crawler_items_checked;
     uint64_t lrutail_reflocked;
+    uint64_t moves_to_history_buffer;
     uint64_t moves_to_cold;
     uint64_t moves_to_warm;
     uint64_t moves_within_lru;
@@ -515,7 +518,7 @@ int do_item_link(item *it, const uint32_t hv, const uint64_t cas) {
     refcount_incr(it);
     item_stats_sizes_add(it);
 
-    print_cache(ITEM_clsid(it));    // DEBUG (3Q)
+    // print_cache(ITEM_clsid(it));    // DEBUG (3Q)
     return 1;
 }
 
@@ -993,6 +996,20 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
     }
     int was_found = 0;
 
+    // BEGIN CODE (3Q)
+    if (it == NULL && history_buffer_contains(key, nkey)) {
+        char* buff = buffer_pool_data(t->thread_baseid);
+        size_t ntotal = disk_storage_read(buff, buffer_pool_bufsize(), key, nkey);
+        uint8_t id = slabs_clsid(ntotal);
+        it = do_item_alloc_pull(ntotal, id);
+        assert(it != NULL);
+        memcpy(it, buff, ntotal);
+        it->slabs_clsid |= WARM_LRU;
+        uint32_t hv = hash(key, nkey);
+        do_item_link(it, hv, ITEM_get_cas(it));
+    }
+    // END CODE (3Q)
+
     if (settings.verbose > 2) {
         int ii;
         if (it == NULL) {
@@ -1186,13 +1203,14 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                         assert(!history_buffer_contains(ITEM_key(search), search->nkey));
                         history_buffer_enqueue(ITEM_key(search), search->nkey);
                         history_buffer_unlock();
-                        // itemstats[id].moves_to_history++;
+                        disk_storage_write(search, ITEM_ntotal(search), ITEM_key(search), search->nkey);
+                        itemstats[id].moves_to_history_buffer++;
                         do_item_unlink_nolock(search, hv);
                         if (settings.slab_automove == 2) {
                             slabs_reassign(settings.slab_rebal, -1, orig_id, SLABS_REASSIGN_ALLOW_EVICTIONS);
                         }
                     }
-                    print_cache(ITEM_clsid(search));
+                    // print_cache(id);
                     it = search;
                     removed++;
                     break;

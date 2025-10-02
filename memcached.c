@@ -62,8 +62,10 @@
 #endif
 
 // BEGIN CODE (3Q)
+#include "3q_buffer_pool.h"
 #include "3q_compressor.h"
 #include "3q_history_buffer.h"
+#include "3q_disk_storage.h"
 // END CODE (3Q)
 
 /*
@@ -1726,6 +1728,7 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
             if (history_buffer_contains(ITEM_key(it), it->nkey)) {
                 it->slabs_clsid |= WARM_LRU;
                 history_buffer_remove(ITEM_key(it), it->nkey);
+                // delete from disk
             }
             history_buffer_unlock();
             // END CODE (3Q)
@@ -5947,8 +5950,14 @@ int main (int argc, char **argv) {
     // BEGIN CODE (3Q)
     {
         compression_resources_init();
+        disk_storage_init(NULL);
+        // +1 for the LRU maintainer thread
+        bool success = buffer_pool_init(settings.num_threads + 1, settings.item_size_max);
+        if (!success) {
+            fprintf(stderr, "[ERROR] unable to init buffer pool\n");
+        } 
         // history should hold identifier for as many pages as would fit on 50% of the cache (Johnson and Shasha, 1994).
-        bool success = history_buffer_init((settings.maxbytes / settings.item_size_max) / 2);
+        success = history_buffer_init((settings.maxbytes / settings.item_size_max) / 2);
         if (!success) {
             fprintf(stderr, "[ERROR] unable to init history buffer\n");
         } 
@@ -6256,6 +6265,8 @@ int main (int argc, char **argv) {
     // BEGIN CODE (3Q)
     compression_resources_cleanup();
     history_buffer_cleanup();
+    disk_storage_cleanup();
+    buffer_pool_cleanup();
     // END CODE (3Q)
 
     free(meta);

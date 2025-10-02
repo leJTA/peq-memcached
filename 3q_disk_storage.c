@@ -51,36 +51,55 @@ static void safe_key_copy(const char* key, uint8_t nkey)
    _safe_key[nkey] = '\0';
 
    for (char *p = _safe_key; *p != '\0'; p++) {
-      if (*p == '/' || *p == '\\' || *p == ':' || *p == '~') {
+      switch (*p) {
+      case '/':
+      case '\\':
+      case ':':
+      case '~':
+      case '*':
+      case '?':
+      case '"':
+      case '\'':
+      case '<':
+      case '>':
+      case '|':
+      case ' ':
+      case '\t':
+      case '\n':
+      case '\r':
          *p = '_';
+         break;
+      default:
+            // valid char, does nothing
+         break;
       }
    }
 }
 
-bool disk_storage_read(void* ptr, int nbytes, const char* key, uint8_t nkey)
+size_t disk_storage_read(void* ptr, int ntotal, const char* key, uint8_t nkey)
 {
    safe_key_copy(key, nkey);
    snprintf(_filename, _maxlen, "%s/%s", _base_dir, _safe_key);
    FILE* file = fopen(_filename, "r");
 
-   if (file == NULL) return false;
-   size_t count = fread((char*)ptr, sizeof(char), nbytes, file);
+   if (file == NULL) return 0;
+   size_t count = fread((char*)ptr, sizeof(char), ntotal, file);
    fclose(file);
 
-   return (count == (size_t)nbytes);
+   return count;
 }
 
-bool disk_storage_write(const void* ptr, int nbytes, const char* key, uint8_t nkey)
+size_t disk_storage_write(const void* ptr, int ntotal, const char* key, uint8_t nkey)
 {
    safe_key_copy(key, nkey);
    snprintf(_filename, _maxlen, "%s/%s", _base_dir, _safe_key);
    FILE* file = fopen(_filename, "w");
 
-   if (file == NULL) return false;
-   size_t count = fwrite((char*)ptr, sizeof(char), nbytes, file);
+   if (file == NULL) return 0;
+   size_t count = fwrite((char*)ptr, sizeof(char), ntotal, file);
    fclose(file);
 
-   return (count == (size_t)nbytes);
+   return count;
 }
 
 bool disk_storage_delete(const char* key, uint8_t nkey)

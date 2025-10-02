@@ -33,7 +33,8 @@ memcached_SOURCES = memcached.c memcached.h \
                     proto_bin.c proto_bin.h \
 						  3q_compressor.h 3q_compressor.c \
 						  3q_history_buffer.h 3q_history_buffer.c \
-						  3q_disk_storage.h 3q_disk_storage.c
+						  3q_disk_storage.h 3q_disk_storage.c \
+						  3q_buffer_pool.h 3q_buffer_pool.c
 
 if BUILD_SOLARIS_PRIVS
 memcached_SOURCES += solaris_priv.c
@@ -235,15 +236,18 @@ maintainer-clean-local:
 	-rm -r gcov-report
 	-rm 3q_history_buffer_test
 	-rm 3q_disk_storage_test
+	-rm 3q_buffer_pool_test
 
 TEST_3Q_FLAGS = -Wall -Wextra -Wpedantic -g -O0 -fsanitize=address --coverage -DUNIT_TESTING
 
 test-3q:
 	$(CC) $(TEST_3Q_FLAGS) 3q_history_buffer.c 3q_history_buffer.t.c -lrt -lgcov -o 3q_history_buffer_test
 	$(CC) $(TEST_3Q_FLAGS) 3q_disk_storage.c 3q_disk_storage.t.c -lrt -lgcov -o 3q_disk_storage_test
+	$(CC) $(TEST_3Q_FLAGS) 3q_buffer_pool.c 3q_buffer_pool.t.c -lrt -lgcov -o 3q_buffer_pool_test
 
 	./3q_history_buffer_test
 	./3q_disk_storage_test
+	./3q_buffer_pool_test
 
 	gcovr --root . --exclude '.*\.t\.c' --exclude third_party/
 	gcovr --root . --exclude '.*\.t\.c' --exclude third_party/ --html-details -o gcov-report/
