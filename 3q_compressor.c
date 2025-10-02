@@ -1,5 +1,6 @@
 #include "memcached.h"
 #include "3q_compressor.h"
+#include "3q_buffer_pool.h"
 #include "slabs.h"
 
 #include <stdlib.h>
@@ -35,27 +36,26 @@ void compression_resources_init(void)
 	for (int i = 0; i < _num_threads; ++i) {
 		switch (settings.comp_algo) {
 		case COMPRESSION_ZSTD:
-			_rcs[i].buffer_size = ZSTD_compressBound(settings.item_size_max);
+			_rcs[i].buffer_size = ZSTD_compressBound(buffer_pool_bufsize());
 			_rcs[i].cctx = ZSTD_createCCtx();
 			_rcs[i].dctx = ZSTD_createDCtx();
 			break;
 		
 		case COMPRESSION_LZ4:
-			_rcs[i].buffer_size = LZ4_compressBound(settings.item_size_max);
+			_rcs[i].buffer_size = LZ4_compressBound(buffer_pool_bufsize());
 			break;
 
 		case COMPRESSION_SNAPPY:
-			_rcs[i].buffer_size = snappy_max_compressed_length(settings.item_size_max);
+			_rcs[i].buffer_size = snappy_max_compressed_length(buffer_pool_bufsize());
 			break;
 		}
-		_rcs[i].buffer = calloc(_rcs[i].buffer_size, sizeof(char));
+		_rcs[i].buffer = buffer_pool_data(i);
 	}
 }
 
 void compression_resources_cleanup(void)
 {
 	for (int i = 0; i < _num_threads; ++i) {
-		free(_rcs[i].buffer);
 		if (settings.comp_algo == COMPRESSION_ZSTD) {
 			ZSTD_freeCCtx(_rcs[i].cctx);
 			ZSTD_freeDCtx(_rcs[i].dctx);
