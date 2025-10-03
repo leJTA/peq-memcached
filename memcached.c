@@ -1722,16 +1722,6 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
         }
 
         if (do_store) {
-            // BEGIN CODE (3Q)
-            // if an item is in the history buffer, it is inserted directly in the warm buffer
-            history_buffer_lock();
-            if (history_buffer_contains(ITEM_key(it), it->nkey)) {
-                it->slabs_clsid |= WARM_LRU;
-                history_buffer_remove(ITEM_key(it), it->nkey);
-                // delete from disk
-            }
-            history_buffer_unlock();
-            // END CODE (3Q)
             do_item_link(it, hv, cas_in);
             stored = STORED;
         }
@@ -5949,10 +5939,10 @@ int main (int argc, char **argv) {
     /* initialize other stuff */
     // BEGIN CODE (3Q)
     {
-        compression_resources_init();
-        disk_storage_init(NULL);
         // +1 for the LRU maintainer thread
         bool success = buffer_pool_init(settings.num_threads + 1, settings.item_size_max);
+        disk_storage_init(NULL);
+        compression_resources_init();
         if (!success) {
             fprintf(stderr, "[ERROR] unable to init buffer pool\n");
         } 
