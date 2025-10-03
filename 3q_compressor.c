@@ -118,9 +118,12 @@ bool do_compress_item(item** ptr, LIBEVENT_THREAD* t)
 	if (settings.verbose > 1) {
 		fprintf(stderr, "[DEBUG] item compressed with compression ratio = %f\n", (double)it->nbytes / compressed_size);
 	}
-	change_item_slabs_cls(ptr, old_ntotal, new_ntotal);
-	memcpy(ITEM_data(*ptr), rc.buffer, compressed_size);
 
+	if (!change_item_slabs_cls(ptr, old_ntotal, new_ntotal)) {
+		return false;
+	}
+	
+	memcpy(ITEM_data(*ptr), rc.buffer, compressed_size);
 	return true;
 }
 
@@ -172,8 +175,10 @@ bool do_decompress_item(item** ptr, LIBEVENT_THREAD* t)
 	new_ntotal = old_ntotal + (decompressed_size - it->nbytes);
 	assert(it->nbytes < decompressed_size);
 
-	change_item_slabs_cls(ptr, old_ntotal, new_ntotal);
-	memcpy(ITEM_data(*ptr), rc.buffer, decompressed_size);
+	if (!change_item_slabs_cls(ptr, old_ntotal, new_ntotal)) {
+		return false;
+	}
 
+	memcpy(ITEM_data(*ptr), rc.buffer, decompressed_size);
 	return true;
 }

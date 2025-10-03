@@ -1007,11 +1007,13 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
             size_t ntotal = disk_storage_read(buff, buffer_pool_bufsize(), key, nkey);
             uint8_t id = slabs_clsid(ntotal);
             it = do_item_alloc_pull(ntotal, id);
-            assert(it != NULL);
-            memcpy(it, buff, ntotal);
-            it->slabs_clsid |= WARM_LRU;
-            uint32_t hv = hash(key, nkey);
-            do_item_link(it, hv, ITEM_get_cas(it));
+            
+            if (it != NULL) {
+                memcpy(it, buff, ntotal);
+                it->slabs_clsid |= WARM_LRU;
+                uint32_t hv = hash(key, nkey);
+                do_item_link(it, hv, ITEM_get_cas(it));
+            }
         }
     }
     // END CODE (3Q)
@@ -1196,8 +1198,11 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                     limit = settings.maxbytes * settings.warm_lru_pct / 100;
                 if (sizes_bytes[id] > limit || flags & LRU_PULL_EVICT) {
                     if (cur_lru == WARM_LRU) {
-                        itemstats[id].moves_to_cold++;
-                        if (!do_compress_item(&search, NULL)) { // if false, item has been moved to COLD
+                        if (do_compress_item(&search, NULL)) { 
+                            // if true, item has been moved to COLD
+                            itemstats[id].moves_to_cold++;
+                        }
+                        else {
                             do_item_unlink_nolock(search, hv);
                             if (settings.slab_automove == 2) {
                                 slabs_reassign(settings.slab_rebal, -1, orig_id, SLABS_REASSIGN_ALLOW_EVICTIONS);
@@ -1806,23 +1811,22 @@ item *do_item_crawl_q(item *it) {
 }
 
 // BEGIN CODE (3Q)
-void change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
+bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
 {
     item* old_it = *ptr;
     int new_nbytes = old_it->nbytes + (new_ntotal - old_ntotal);
-    unsigned int id = slabs_clsid(new_ntotal);
+    uint8_t id = slabs_clsid(new_ntotal);
 
     if (old_it->slabs_clsid == id) {
         // This should never happen if the minimal compression ratio is greater than 1.5, 
         // which should always be the case
-        return;
+        return false;
     }
 
     // 1. allocate new slab
     item* new_it = do_item_alloc_pull(new_ntotal, id);
     if (new_it == NULL) {
-        fprintf(stderr, "[ERROR] slabs allocation failed\n");
-        return;
+        return false;
     }
 
     // 2. copy item header
@@ -1836,7 +1840,7 @@ void change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
     // 4. replace old item with new item
     assert(old_it->it_flags & ITEM_LINKED);
     uint32_t hv = hash(ITEM_key(old_it), old_it->nkey);
-    if (new_nbytes < old_it->nbytes) {
+    if (new_it->nbytes < old_it->nbytes) {
         // compression, move to COLD
         new_it->slabs_clsid |= COLD_LRU;
         do_item_unlink_nolock(old_it, hv);  // WARM LRU is already locked from lru_pull_tail
@@ -1851,6 +1855,8 @@ void change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
 
     // 5. update item pointer
     *ptr = new_it;
+
+    return true;
 }
 
 static void print_cache(int slabs_clsid)
