@@ -12,7 +12,7 @@ void history_buffer_cleanup(void);
 // Manipulators
 void history_buffer_enqueue(const char* key, uint8_t nkey);
 void history_buffer_dequeue(void);
-void history_buffer_remove(const char* key, uint8_t nkey);
+bool history_buffer_remove(const char* key, uint8_t nkey);
 void history_buffer_lock(void);
 void history_buffer_unlock(void);
 

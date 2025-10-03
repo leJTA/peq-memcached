@@ -997,16 +997,22 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
     int was_found = 0;
 
     // BEGIN CODE (3Q)
-    if (it == NULL && history_buffer_contains(key, nkey)) {
-        char* buff = buffer_pool_data(t->thread_baseid);
-        size_t ntotal = disk_storage_read(buff, buffer_pool_bufsize(), key, nkey);
-        uint8_t id = slabs_clsid(ntotal);
-        it = do_item_alloc_pull(ntotal, id);
-        assert(it != NULL);
-        memcpy(it, buff, ntotal);
-        it->slabs_clsid |= WARM_LRU;
-        uint32_t hv = hash(key, nkey);
-        do_item_link(it, hv, ITEM_get_cas(it));
+    if (it == NULL) {
+        history_buffer_lock();
+        bool found_and_removed = history_buffer_remove(key, nkey);
+        history_buffer_unlock();
+
+        if (found_and_removed) {
+            char* buff = (char*)buffer_pool_data(t->thread_baseid);
+            size_t ntotal = disk_storage_read(buff, buffer_pool_bufsize(), key, nkey);
+            uint8_t id = slabs_clsid(ntotal);
+            it = do_item_alloc_pull(ntotal, id);
+            assert(it != NULL);
+            memcpy(it, buff, ntotal);
+            it->slabs_clsid |= WARM_LRU;
+            uint32_t hv = hash(key, nkey);
+            do_item_link(it, hv, ITEM_get_cas(it));
+        }
     }
     // END CODE (3Q)
 
@@ -1203,9 +1209,9 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                         assert(!history_buffer_contains(ITEM_key(search), search->nkey));
                         history_buffer_enqueue(ITEM_key(search), search->nkey);
                         history_buffer_unlock();
-                        disk_storage_write(search, ITEM_ntotal(search), ITEM_key(search), search->nkey);
                         itemstats[id].moves_to_history_buffer++;
                         do_item_unlink_nolock(search, hv);
+                        disk_storage_write(search, ITEM_ntotal(search), ITEM_key(search), search->nkey); // This is very expensive !
                         if (settings.slab_automove == 2) {
                             slabs_reassign(settings.slab_rebal, -1, orig_id, SLABS_REASSIGN_ALLOW_EVICTIONS);
                         }

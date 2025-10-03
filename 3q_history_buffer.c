@@ -104,7 +104,7 @@ void history_buffer_dequeue(void)
    _history->size--;
 }
 
-void history_buffer_remove(const char* key, uint8_t nkey)
+bool history_buffer_remove(const char* key, uint8_t nkey)
 {
    history_item* hi = _history->head;
    history_item* prev = NULL;
@@ -124,13 +124,13 @@ void history_buffer_remove(const char* key, uint8_t nkey)
          }
 
          destroy_history_item(hi);
-         break;
+         _history->size--;
+         return true;
       }
       prev = hi;
       hi = hi->next;
    }
-
-   _history->size--;
+   return false;
 }
 
 void history_buffer_lock(void)
