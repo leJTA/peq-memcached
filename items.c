@@ -188,11 +188,11 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
             // We send '0' in for "total_bytes" as this routine is always
             // pulling to evict, or forcing HOT -> COLD migration.
             // As of this writing, total_bytes isn't at all used with COLD_LRU.
-            if (lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL) <= 0) {
+            // BEGIN CODE EDIT (3Q)
+            if (lru_pull_tail(id, HOT_LRU, 0, 0, 0, NULL) <= 0) {
                 if (settings.lru_segmented) {
-                    // BEGIN CODE EDIT (3Q)
-                    lru_pull_tail(id, HOT_LRU, 0, LRU_PULL_EVICT, 0, NULL);
-                    // END CODE EDIT (3Q)
+                    lru_pull_tail(id, WARM_LRU, 0, 0, 0, NULL);
+            // END CODE EDIT (3Q)
                 } else {
                     break;
                 }
@@ -991,10 +991,6 @@ void item_stats_sizes(ADD_STAT add_stats, void *c) {
 /** wrapper around assoc_find which does the lazy expiration logic */
 item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVENT_THREAD *t, const bool do_update) {
     item *it = assoc_find(key, nkey, hv);
-    if (it != NULL) {
-        refcount_incr(it);
-    }
-    int was_found = 0;
 
     // BEGIN CODE (3Q)
     if (it == NULL) {
@@ -1011,12 +1007,18 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
             if (it != NULL) {
                 memcpy(it, buff, ntotal);
                 it->slabs_clsid |= WARM_LRU;
+                it->refcount = 0;
                 uint32_t hv = hash(key, nkey);
                 do_item_link(it, hv, ITEM_get_cas(it));
             }
         }
     }
     // END CODE (3Q)
+
+    if (it != NULL) {
+        refcount_incr(it);
+    }
+    int was_found = 0;
 
     if (settings.verbose > 2) {
         int ii;
@@ -1234,7 +1236,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
             case COLD_LRU:
                 it = search; /* No matter what, we're stopping */
                 limit = settings.maxbytes * (100 - settings.hot_lru_pct - settings.warm_lru_pct) / 100; // CODE (3Q)
-                if (flags & LRU_PULL_EVICT || sizes_bytes[id] > limit) { // CODE EDIT (3Q)
+                if (total_bytes > limit || flags & LRU_PULL_EVICT) { // CODE EDIT (3Q)
                     if (settings.evict_to_free == 0) {
                         /* Don't think we need a counter for this. It'll OOM.  */
                         break;
@@ -1408,7 +1410,7 @@ static uint64_t lru_total_bumps_dropped(void) {
 static int lru_maintainer_juggle(const int slabs_clsid) {
     int i;
     int did_moves = 0;
-    uint64_t total_bytes = 0;
+    uint64_t total_cold_bytes = 0;
     unsigned int chunks_perslab = 0;
     //unsigned int chunks_free = 0;
     /* TODO: if free_chunks below high watermark, increase aggressiveness */
@@ -1434,32 +1436,29 @@ static int lru_maintainer_juggle(const int slabs_clsid) {
         if (tails[slabs_clsid|COLD_LRU]) {
             cold_age = current_time - tails[slabs_clsid|COLD_LRU]->time;
         }
-        // Also build up total_bytes for the classes.
-        total_bytes += sizes_bytes[slabs_clsid|COLD_LRU];
         pthread_mutex_unlock(&lru_locks[slabs_clsid|COLD_LRU]);
+        // Also build up total_bytes for the classes.
+        // BEGIN CODE EDIT (3Q)
+        for (int clsid = 1; clsid < LARGEST_ID; ++clsid) {
+            pthread_mutex_lock(&lru_locks[clsid|COLD_LRU]);
+            total_cold_bytes += sizes_bytes[clsid|COLD_LRU];
+            pthread_mutex_unlock(&lru_locks[clsid|COLD_LRU]);
+        }
 
         hot_age = cold_age * settings.hot_max_factor;
         warm_age = cold_age * settings.warm_max_factor;
-
-        // total_bytes doesn't have to be exact. cache it for the juggles.
-        pthread_mutex_lock(&lru_locks[slabs_clsid|HOT_LRU]);
-        total_bytes += sizes_bytes[slabs_clsid|HOT_LRU];
-        pthread_mutex_unlock(&lru_locks[slabs_clsid|HOT_LRU]);
-
-        pthread_mutex_lock(&lru_locks[slabs_clsid|WARM_LRU]);
-        total_bytes += sizes_bytes[slabs_clsid|WARM_LRU];
-        pthread_mutex_unlock(&lru_locks[slabs_clsid|WARM_LRU]);
+        // END CODE EDIT (3Q)
     }
 
     /* Juggle HOT/WARM up to N times */
     for (i = 0; i < 500; i++) {
         int do_more = 0;
-        if (lru_pull_tail(slabs_clsid, HOT_LRU, total_bytes, LRU_PULL_CRAWL_BLOCKS, hot_age, NULL) ||
-            lru_pull_tail(slabs_clsid, WARM_LRU, total_bytes, LRU_PULL_CRAWL_BLOCKS, warm_age, NULL)) {
+        if (lru_pull_tail(slabs_clsid, HOT_LRU, 0, LRU_PULL_CRAWL_BLOCKS, hot_age, NULL) ||
+            lru_pull_tail(slabs_clsid, WARM_LRU, 0, LRU_PULL_CRAWL_BLOCKS, warm_age, NULL)) {
             do_more++;
         }
         if (settings.lru_segmented) {
-            do_more += lru_pull_tail(slabs_clsid, COLD_LRU, total_bytes, LRU_PULL_CRAWL_BLOCKS, 0, NULL);
+            do_more += lru_pull_tail(slabs_clsid, COLD_LRU, total_cold_bytes, LRU_PULL_CRAWL_BLOCKS, 0, NULL);
         }
         if (do_more == 0)
             break;
@@ -1834,6 +1833,7 @@ bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
 
     // 3. update new item values
     new_it->it_flags &= ~ITEM_LINKED;
+    new_it->refcount = 0;
     new_it->slabs_clsid = id;
     new_it->nbytes = new_nbytes;
 
