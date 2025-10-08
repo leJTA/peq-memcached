@@ -26,7 +26,6 @@
 /* Forward Declarations */
 static void item_link_q(item *it);
 static void item_unlink_q(item *it);
-static void print_cache(int slabs_clsid);
 
 static unsigned int lru_type_map[4] = {HOT_LRU, WARM_LRU, COLD_LRU, TEMP_LRU};
 
@@ -1200,9 +1199,14 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                     limit = settings.maxbytes * settings.warm_lru_pct / 100;
                 if (sizes_bytes[id] > limit || flags & LRU_PULL_EVICT) {
                     if (cur_lru == WARM_LRU) {
-                        if (do_compress_item(&search, NULL)) { 
+                        item* old_it = search;
+                        if (do_compress_item(&search, NULL)) { // old_it->refcount 2 -> 1
                             // if true, item has been moved to COLD
                             itemstats[id].moves_to_cold++;
+                            // delete the old item
+                            do_item_remove(old_it); // // old_it->refcount 1 -> 0 -> item_free
+                            // increase the refcount of the compressed item
+                            refcount_incr(search);
                         }
                         else {
                             do_item_unlink_nolock(search, hv);
@@ -1857,49 +1861,5 @@ bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
     *ptr = new_it;
 
     return true;
-}
-
-static void print_cache(int slabs_clsid)
-{
-    item* it = heads[slabs_clsid|HOT_LRU];
-    fprintf(stderr, "======================================\n");
-    fprintf(stderr, "HOT_LRU : [");
-    while (it != NULL) {
-        fprintf(stderr, "%.*s", it->nkey, ITEM_key(it));
-        it = it->next;
-        if (it != NULL) {
-            fprintf(stderr, ", ");
-        }
-    }
-    fprintf(stderr, "]\n");
-
-    history_buffer_print();
-
-    it = heads[slabs_clsid|WARM_LRU];
-    fprintf(stderr, "WARM_LRU : [");
-    while (it != NULL) {
-        fprintf(stderr, "%.*s", it->nkey, ITEM_key(it));
-        it = it->next;
-        if (it != NULL) {
-            fprintf(stderr, ", ");
-        }
-    }
-    fprintf(stderr, "]\n");
-
-    fprintf(stderr, "COLD_LRU : [ ");
-    for (int j = 0; j < LARGEST_ID; ++j) {
-        it = heads[j|COLD_LRU];
-        
-        if (it == NULL) continue;
-
-        while (it != NULL) {
-            fprintf(stderr, "%.*s ", it->nkey, ITEM_key(it));
-            it = it->next;
-        }
-    }
-    fprintf(stderr, "]\n");
-    
-    fprintf(stderr, "======================================\n");
-
 }
 // END CODE (3Q)

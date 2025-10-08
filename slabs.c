@@ -396,7 +396,6 @@ static int do_slabs_newslab(const unsigned int id) {
 
     p->slab_list[p->slabs++] = ptr;
     MEMCACHED_SLABS_SLABCLASS_ALLOCATE(id);
-
     return 1;
 }
 
