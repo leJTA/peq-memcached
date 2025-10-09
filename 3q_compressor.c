@@ -63,12 +63,12 @@ void compression_resources_cleanup(void)
 	}
 }
 
-bool do_compress_item(item** ptr, LIBEVENT_THREAD* t)
+bool do_compress_item(item** ptr)
 {
 	item* it = *ptr;
 	assert(ITEM_lruid(it) == WARM_LRU);
 
-	int tid = (t != NULL) ? t->thread_baseid : _num_threads - 1;
+	int tid = (get_thread_base_id() >= 0) ? get_thread_base_id() : _num_threads - 1;
 	struct compression_resources rc = _rcs[tid];
 	size_t compressed_size = 0;
 	size_t old_ntotal = ITEM_ntotal(it);
@@ -127,12 +127,13 @@ bool do_compress_item(item** ptr, LIBEVENT_THREAD* t)
 	return true;
 }
 
-bool do_decompress_item(item** ptr, LIBEVENT_THREAD* t)
+bool do_decompress_item(item** ptr)
 {
 	item* it = *ptr;
 	assert(ITEM_lruid(it) == COLD_LRU);
 
-	struct compression_resources rc = _rcs[t->thread_baseid];
+	int tid = (get_thread_base_id() >= 0) ? get_thread_base_id() : _num_threads - 1;
+	struct compression_resources rc = _rcs[tid];
 	size_t decompressed_size = 0;
 	size_t old_ntotal = ITEM_ntotal(it);
 	size_t new_ntotal = 0;

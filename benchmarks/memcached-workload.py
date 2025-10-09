@@ -22,6 +22,7 @@ def generate_payload(size_bytes):
     """Génère un bytes de taille size_bytes."""
     # Génère une chaîne répétitive basée sur alphanumérics pour lisibilité.
     # b = "".join(random.choices(string.ascii_letters + string.digits, k=size_bytes))
+    random.seed(0)
     base = "".join(
         random.choices(string.ascii_letters + string.digits, k=1024)
     ).encode("ascii")
@@ -46,6 +47,7 @@ def worker_thread(host, port, keys, data_list, ops_per_thread, set_ratio, thread
     }
     try:
         for _ in range(ops_per_thread):
+            # random.seed(10)
             idx = random.randrange(len(keys))
             key = keys[idx]
             if random.random() < set_ratio:

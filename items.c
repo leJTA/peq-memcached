@@ -1200,7 +1200,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                 if (sizes_bytes[id] > limit || flags & LRU_PULL_EVICT) {
                     if (cur_lru == WARM_LRU) {
                         item* old_it = search;
-                        if (do_compress_item(&search, NULL)) { // old_it->refcount 2 -> 1
+                        if (do_compress_item(&search)) { // old_it->refcount 2 -> 1
                             // if true, item has been moved to COLD
                             itemstats[id].moves_to_cold++;
                             // delete the old item
