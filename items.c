@@ -38,7 +38,7 @@ typedef struct {
     uint64_t tailrepairs;
     uint64_t expired_unfetched; /* items reclaimed but never touched */
     uint64_t evicted_unfetched; /* items evicted but never touched */
-    uint64_t evicted_active; /* items evicted that should have been shuffled */
+    // uint64_t evicted_active; /* items evicted that should have been shuffled */
     uint64_t crawler_reclaimed;
     uint64_t crawler_items_checked;
     uint64_t lrutail_reflocked;
@@ -753,7 +753,7 @@ void item_stats_totals(ADD_STAT add_stats, void *c) {
             totals.reclaimed += itemstats[i].reclaimed;
             totals.expired_unfetched += itemstats[i].expired_unfetched;
             totals.evicted_unfetched += itemstats[i].evicted_unfetched;
-            totals.evicted_active += itemstats[i].evicted_active;
+            // totals.evicted_active += itemstats[i].evicted_active;
             totals.crawler_reclaimed += itemstats[i].crawler_reclaimed;
             totals.crawler_items_checked += itemstats[i].crawler_items_checked;
             totals.lrutail_reflocked += itemstats[i].lrutail_reflocked;
@@ -768,10 +768,10 @@ void item_stats_totals(ADD_STAT add_stats, void *c) {
                 (unsigned long long)totals.expired_unfetched);
     APPEND_STAT("evicted_unfetched", "%llu",
                 (unsigned long long)totals.evicted_unfetched);
-    if (settings.lru_maintainer_thread) {
-        APPEND_STAT("evicted_active", "%llu",
-                    (unsigned long long)totals.evicted_active);
-    }
+    // if (settings.lru_maintainer_thread) {
+    //     APPEND_STAT("evicted_active", "%llu",
+    //                 (unsigned long long)totals.evicted_active);
+    // }
     APPEND_STAT("evictions", "%llu",
                 (unsigned long long)totals.evicted);
     APPEND_STAT("reclaimed", "%llu",
@@ -824,7 +824,7 @@ void item_stats(ADD_STAT add_stats, void *c) {
             totals.tailrepairs += itemstats[i].tailrepairs;
             totals.expired_unfetched += itemstats[i].expired_unfetched;
             totals.evicted_unfetched += itemstats[i].evicted_unfetched;
-            totals.evicted_active += itemstats[i].evicted_active;
+            // totals.evicted_active += itemstats[i].evicted_active;
             totals.crawler_reclaimed += itemstats[i].crawler_reclaimed;
             totals.crawler_items_checked += itemstats[i].crawler_items_checked;
             totals.lrutail_reflocked += itemstats[i].lrutail_reflocked;
@@ -891,10 +891,10 @@ void item_stats(ADD_STAT add_stats, void *c) {
                             "%llu", (unsigned long long)totals.expired_unfetched);
         APPEND_NUM_FMT_STAT(fmt, n, "evicted_unfetched",
                             "%llu", (unsigned long long)totals.evicted_unfetched);
-        if (settings.lru_maintainer_thread) {
-            APPEND_NUM_FMT_STAT(fmt, n, "evicted_active",
-                                "%llu", (unsigned long long)totals.evicted_active);
-        }
+        // if (settings.lru_maintainer_thread) {
+        //     APPEND_NUM_FMT_STAT(fmt, n, "evicted_active",
+        //                         "%llu", (unsigned long long)totals.evicted_active);
+        // }
         APPEND_NUM_FMT_STAT(fmt, n, "crawler_reclaimed",
                             "%llu", (unsigned long long)totals.crawler_reclaimed);
         APPEND_NUM_FMT_STAT(fmt, n, "crawler_items_checked",
@@ -904,6 +904,8 @@ void item_stats(ADD_STAT add_stats, void *c) {
         if (settings.lru_maintainer_thread) {
             APPEND_NUM_FMT_STAT(fmt, n, "moves_to_cold",
                                 "%llu", (unsigned long long)totals.moves_to_cold);
+            APPEND_NUM_FMT_STAT(fmt, n, "moves_to_history_buffer",
+                                "%llu", (unsigned long long)totals.moves_to_history_buffer);
             APPEND_NUM_FMT_STAT(fmt, n, "moves_to_warm",
                                 "%llu", (unsigned long long)totals.moves_to_warm);
             APPEND_NUM_FMT_STAT(fmt, n, "moves_within_lru",
@@ -1005,6 +1007,7 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
             
             if (it != NULL) {
                 memcpy(it, buff, ntotal);
+                assert(ITEM_clsid(it) == id);
                 it->slabs_clsid |= WARM_LRU;
                 it->refcount = 0;
                 uint32_t hv = hash(key, nkey);
@@ -1251,9 +1254,6 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                         itemstats[id].evicted_nonzero++;
                     if ((search->it_flags & ITEM_FETCHED) == 0) {
                         itemstats[id].evicted_unfetched++;
-                    }
-                    if ((search->it_flags & ITEM_ACTIVE)) {
-                        itemstats[id].evicted_active++;
                     }
                     LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EVICTION, search);
                     STORAGE_delete(ext_storage, search);
@@ -1844,6 +1844,7 @@ bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
     // 4. replace old item with new item
     assert(old_it->it_flags & ITEM_LINKED);
     uint32_t hv = hash(ITEM_key(old_it), old_it->nkey);
+    assert(assoc_find(ITEM_key(old_it), old_it->nkey, hv) != NULL);
     if (new_it->nbytes < old_it->nbytes) {
         // compression, move to COLD
         new_it->slabs_clsid |= COLD_LRU;
