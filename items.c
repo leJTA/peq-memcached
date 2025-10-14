@@ -985,24 +985,28 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
     // BEGIN CODE (3Q)
     if (it == NULL) {
         history_buffer_lock();
-        bool found_and_removed = history_buffer_remove(key, nkey);
+        history_item* hi = history_buffer_remove(key, nkey);
         history_buffer_unlock();
 
-        if (found_and_removed) {
-            char* buff = malloc(sizeof(char) * settings.item_size_max);
-            size_t ntotal = disk_storage_read(buff, buffer_pool_bufsize(), key, nkey);
-            uint8_t id = slabs_clsid(ntotal);
-            it = do_item_alloc_pull(ntotal, id);
+        if (hi != NULL) {
+            it = do_item_alloc(key, nkey, 0, hi->exptime, hi->nbytes);
             
             if (it != NULL) {
-                memcpy(it, buff, ntotal);
-                assert(ITEM_clsid(it) == id);
-                it->slabs_clsid |= WARM_LRU;
                 it->refcount = 0;
+                it->it_flags = hi->it_flags;
+                it->slabs_clsid = hi->slabs_clsid;
+                
+                size_t nbytes = disk_storage_read(ITEM_data(it), it->nbytes, key, nkey);
+                memcpy(ITEM_data(it) + nbytes, "\r\n", 2);
+
+                assert(ITEM_clsid(it) == hi->slabs_clsid);
+                assert(it->nbytes == nbytes);
+
+                it->slabs_clsid |= WARM_LRU;
                 uint32_t hv = hash(key, nkey);
                 do_item_link(it, hv, ITEM_get_cas(it));
             }
-            free(buff);
+            free(hi);
         }
     }
     // END CODE (3Q)
@@ -1211,11 +1215,14 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                     else {
                         history_buffer_lock();
                         assert(!history_buffer_contains(ITEM_key(search), search->nkey));
-                        history_buffer_enqueue(ITEM_key(search), search->nkey);
+                        history_buffer_enqueue(ITEM_key(search), search->nkey, search->exptime, 
+                                               search->nbytes, search->it_flags & ~ITEM_LINKED, // item will be unlinked
+                                               search->slabs_clsid
+                                            );
                         history_buffer_unlock();
                         itemstats[id].moves_to_history_buffer++;
                         do_item_unlink_nolock(search, hv);
-                        disk_storage_write(search, ITEM_ntotal(search), ITEM_key(search), search->nkey); // This is very expensive !
+                        disk_storage_write(ITEM_data(search), search->nbytes, ITEM_key(search), search->nkey); // This is very expensive !
                         if (settings.slab_automove == 2) {
                             slabs_reassign(settings.slab_rebal, -1, orig_id, SLABS_REASSIGN_ALLOW_EVICTIONS);
                         }

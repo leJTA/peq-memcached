@@ -36,11 +36,6 @@ void disk_storage_init(const char* base_dir)
 
 void disk_storage_cleanup(void)
 {
-   char cmd[512];
-   snprintf(cmd, sizeof(cmd), "rm -rf %s", _base_dir);
-   if (system(cmd) != 0) {
-      fprintf( stderr, "[ERROR] unable to launch command : %s\n", cmd);
-   }
    free(_base_dir);
 }
 
@@ -75,7 +70,7 @@ static void safe_key_copy(char* safe_key, const char* key, uint8_t nkey)
    }
 }
 
-size_t disk_storage_read(void* ptr, size_t ntotal, const char* key, uint8_t nkey)
+size_t disk_storage_read(void* ptr, size_t nbytes, const char* key, uint8_t nkey)
 {
    char* filename = (char*)malloc(_maxlen * sizeof(char));
    char safe_key[UINT8_MAX + 1];
@@ -90,8 +85,8 @@ size_t disk_storage_read(void* ptr, size_t ntotal, const char* key, uint8_t nkey
    }
    
    size_t bytes_read = 0;
-   while (bytes_read < ntotal) {
-      ssize_t r = read(fd, (char*)ptr + bytes_read, ntotal - bytes_read);
+   while (bytes_read < nbytes) {
+      ssize_t r = read(fd, (char*)ptr + bytes_read, nbytes - bytes_read);
       if (r < 0) {
          if (errno == EINTR) continue; // retry
          perror("read");
@@ -107,7 +102,7 @@ size_t disk_storage_read(void* ptr, size_t ntotal, const char* key, uint8_t nkey
    return bytes_read;
 }
 
-size_t disk_storage_write(const void* ptr, size_t ntotal, const char* key, uint8_t nkey)
+size_t disk_storage_write(const void* ptr, size_t nbytes, const char* key, uint8_t nkey)
 {
    char* filename = (char*)malloc(_maxlen * sizeof(char));
    char safe_key[UINT8_MAX + 1];
@@ -122,8 +117,8 @@ size_t disk_storage_write(const void* ptr, size_t ntotal, const char* key, uint8
    }
 
    size_t bytes_written = 0;
-   while (bytes_written < ntotal) {
-      ssize_t w = write(fd, (char*)ptr + bytes_written, ntotal - bytes_written);
+   while (bytes_written < nbytes) {
+      ssize_t w = write(fd, (char*)ptr + bytes_written, nbytes - bytes_written);
       if (w < 0) {
          if (errno == EINTR) continue; // retry
          perror("write");

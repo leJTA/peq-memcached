@@ -6,23 +6,12 @@
 #include <pthread.h>
 #include <limits.h>
 
-// forward declaration
-typedef struct history_item history_item;
-typedef struct history_buffer history_buffer;
-
-// type definition
-struct history_item {
-   char* key;
-   uint8_t nkey;
-   history_item* next;
-};
-
-struct history_buffer {
-   history_item* head;
-   history_item* tail;
+typedef struct history_buffer {
+   struct history_item* head;
+   struct history_item* tail;
    size_t capacity;
    size_t size;
-};
+} history_buffer;
 
 static history_buffer* _history = NULL;
 static pthread_mutex_t _history_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -64,7 +53,8 @@ void history_buffer_cleanup(void)
    _history = NULL;
 }
 
-void history_buffer_enqueue(const char* key, uint8_t nkey)
+void history_buffer_enqueue(const char* key, uint8_t nkey, rel_time_t exptime, int nbytes,
+									 uint16_t it_flags, uint8_t slabs_clsid)
 {
    if (_history->size == _history->capacity) {
       history_buffer_dequeue();
@@ -74,6 +64,10 @@ void history_buffer_enqueue(const char* key, uint8_t nkey)
    hi->key = malloc(nkey * sizeof(char));
    memcpy(hi->key, key, nkey);
    hi->nkey = nkey;
+   hi->exptime = exptime;
+   hi->nbytes = nbytes;
+   hi->it_flags = it_flags;
+   hi->slabs_clsid = slabs_clsid;
 
    if (_history->head == NULL) {
       _history->head = hi;
@@ -104,7 +98,7 @@ void history_buffer_dequeue(void)
    _history->size--;
 }
 
-bool history_buffer_remove(const char* key, uint8_t nkey)
+history_item* history_buffer_remove(const char* key, uint8_t nkey)
 {
    history_item* hi = _history->head;
    history_item* prev = NULL;
@@ -123,14 +117,13 @@ bool history_buffer_remove(const char* key, uint8_t nkey)
             _history->tail = prev;
          }
 
-         destroy_history_item(hi);
          _history->size--;
-         return true;
+         return hi;
       }
       prev = hi;
       hi = hi->next;
    }
-   return false;
+   return NULL;
 }
 
 void history_buffer_lock(void)
