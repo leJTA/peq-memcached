@@ -38,7 +38,9 @@ void disk_storage_cleanup(void)
 {
    char cmd[512];
    snprintf(cmd, sizeof(cmd), "rm -rf %s", _base_dir);
-   system(cmd);
+   if (system(cmd) != 0) {
+      fprintf( stderr, "[ERROR] unable to launch command : %s\n", cmd);
+   }
    free(_base_dir);
 }
 
@@ -73,7 +75,7 @@ static void safe_key_copy(char* safe_key, const char* key, uint8_t nkey)
    }
 }
 
-size_t disk_storage_read(void* ptr, int ntotal, const char* key, uint8_t nkey)
+size_t disk_storage_read(void* ptr, size_t ntotal, const char* key, uint8_t nkey)
 {
    char* filename = (char*)malloc(_maxlen * sizeof(char));
    char safe_key[UINT8_MAX + 1];
@@ -87,12 +89,6 @@ size_t disk_storage_read(void* ptr, int ntotal, const char* key, uint8_t nkey)
       return 0;
    }
    
-   if (flock(fd, LOCK_SH) != 0) { // shared lock. useless ?
-      perror("flock LOCK_SH");
-      close(fd);
-      return 0;
-   }
-   
    size_t bytes_read = 0;
    while (bytes_read < ntotal) {
       ssize_t r = read(fd, (char*)ptr + bytes_read, ntotal - bytes_read);
@@ -101,19 +97,17 @@ size_t disk_storage_read(void* ptr, int ntotal, const char* key, uint8_t nkey)
          perror("read");
          flock(fd, LOCK_UN);
          close(fd);
-         return -1;
+         return 0;
       }
       if (r == 0) break; // EOF
       bytes_read += r;
    }
 
    close(fd);
-   flock(fd, LOCK_UN);
-
    return bytes_read;
 }
 
-size_t disk_storage_write(const void* ptr, int ntotal, const char* key, uint8_t nkey)
+size_t disk_storage_write(const void* ptr, size_t ntotal, const char* key, uint8_t nkey)
 {
    char* filename = (char*)malloc(_maxlen * sizeof(char));
    char safe_key[UINT8_MAX + 1];
@@ -121,15 +115,9 @@ size_t disk_storage_write(const void* ptr, int ntotal, const char* key, uint8_t 
    safe_key_copy(safe_key, key, nkey);
    snprintf(filename, _maxlen, "%s/%s", _base_dir, safe_key);
 
-   int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+   int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_SYNC, 0644);
    if (fd < 0) {
       perror("open");
-      return -1;
-   }
-
-   if (flock(fd, LOCK_EX) != 0) { // exclusive lock. useless ?
-      perror("flock LOCK_EX");
-      close(fd);
       return -1;
    }
 
@@ -147,9 +135,7 @@ size_t disk_storage_write(const void* ptr, int ntotal, const char* key, uint8_t 
    }
 
    fsync(fd); // force write to the disk
-   flock(fd, LOCK_UN);
    close(fd);
-
    return bytes_written;
 }
 

@@ -888,10 +888,9 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
     
     // BEGIN CODE (3Q)
     item* old_it = it;
-    if (it && ITEM_lruid(it) == COLD_LRU && do_decompress_item(&it)) { // old_it->refcount 2 -> 1
-        assert(old_it->refcount == 1);
+    if (it && ITEM_lruid(it) == COLD_LRU && do_decompress_item(&it)) {
         refcount_incr(it);
-        do_item_remove(old_it); // old_it->refcount 1 -> 0 -> item_free
+        do_item_remove(old_it);
         if (settings.verbose >= 2) {
             fprintf(stderr, "[DEBUG] item decompressed and moved to slabs class %d\n", it->slabs_clsid);
         }

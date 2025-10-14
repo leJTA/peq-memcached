@@ -5939,8 +5939,10 @@ int main (int argc, char **argv) {
     /* initialize other stuff */
     // BEGIN CODE (3Q)
     {
-        // +1 for the LRU maintainer thread
-        bool success = buffer_pool_init(settings.num_threads + 1, settings.item_size_max);
+        bool success = buffer_pool_init(
+            settings.num_threads + 1, // +1 for the LRU maintainer thread
+            settings.item_size_max + 4096 // +4096 for the worst-case ZSTD
+        );
         disk_storage_init(NULL);
         compression_resources_init();
         if (!success) {

@@ -36,19 +36,20 @@ void compression_resources_init(void)
 	for (int i = 0; i < _num_threads; ++i) {
 		switch (settings.comp_algo) {
 		case COMPRESSION_ZSTD:
-			_rcs[i].buffer_size = ZSTD_compressBound(buffer_pool_bufsize());
+			_rcs[i].buffer_size = ZSTD_compressBound(settings.item_size_max);
 			_rcs[i].cctx = ZSTD_createCCtx();
 			_rcs[i].dctx = ZSTD_createDCtx();
 			break;
 		
 		case COMPRESSION_LZ4:
-			_rcs[i].buffer_size = LZ4_compressBound(buffer_pool_bufsize());
+			_rcs[i].buffer_size = LZ4_compressBound(settings.item_size_max);
 			break;
 
 		case COMPRESSION_SNAPPY:
-			_rcs[i].buffer_size = snappy_max_compressed_length(buffer_pool_bufsize());
+			_rcs[i].buffer_size = snappy_max_compressed_length(settings.item_size_max);
 			break;
 		}
+		assert(_rcs[i].buffer_size <= buffer_pool_bufsize());
 		_rcs[i].buffer = buffer_pool_data(i);
 	}
 }
