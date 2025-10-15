@@ -7,7 +7,6 @@
 
 #ifdef UNIT_TESTING
 char* base_dir();
-char* filename();
 #endif // UNIT_TESTING
 
 static void setup()
@@ -54,7 +53,6 @@ MU_TEST(test_write_and_read) {
 
    mu_check(count1 == 11);
    mu_check(count2 == 11);
-   mu_assert(!strcmp(filename(), "/tmp/3q-test-dir/key0"), "Filename should match the key");
    mu_assert(memcmp(in, out, nbytes) == 0, "Input and output data are not equal");
 
    free(out);
@@ -149,7 +147,6 @@ MU_TEST(test_unsafe_key) {
 
    mu_check(count1 == 11);
    mu_check(count2 == 11);
-   mu_assert(!strcmp(filename(), "/tmp/3q-test-dir/_k_e_y_0"), "Filename should match the safe key");
    mu_assert(memcmp(in, out, nbytes) == 0, "Input and output data are not equal");
 
    free(out);

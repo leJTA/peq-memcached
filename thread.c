@@ -889,6 +889,7 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
     // BEGIN CODE (3Q)
     item* old_it = it;
     if (it && ITEM_lruid(it) == COLD_LRU && do_decompress_item(&it)) {
+        assert(old_it->refcount == 1);
         refcount_incr(it);
         do_item_remove(old_it);
         if (settings.verbose >= 2) {

@@ -1000,13 +1000,13 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
                 memcpy(ITEM_data(it) + nbytes, "\r\n", 2);
 
                 assert(ITEM_clsid(it) == hi->slabs_clsid);
-                assert(it->nbytes == nbytes);
+                assert(it->nbytes == nbytes + 2);
 
                 it->slabs_clsid |= WARM_LRU;
                 uint32_t hv = hash(key, nkey);
                 do_item_link(it, hv, ITEM_get_cas(it));
             }
-            free(hi);
+            destroy_history_item(hi);
         }
     }
     // END CODE (3Q)
@@ -1222,7 +1222,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                         history_buffer_unlock();
                         itemstats[id].moves_to_history_buffer++;
                         do_item_unlink_nolock(search, hv);
-                        disk_storage_write(ITEM_data(search), search->nbytes, ITEM_key(search), search->nkey); // This is very expensive !
+                        // disk_storage_write(ITEM_data(search), search->nbytes - 2, ITEM_key(search), search->nkey); // This is very expensive !
                         if (settings.slab_automove == 2) {
                             slabs_reassign(settings.slab_rebal, -1, orig_id, SLABS_REASSIGN_ALLOW_EVICTIONS);
                         }
@@ -1241,6 +1241,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                 it = search; /* No matter what, we're stopping */
                 limit = settings.maxbytes * (100 - settings.hot_lru_pct - settings.warm_lru_pct) / 100; // CODE (3Q)
                 if (total_bytes > limit || flags & LRU_PULL_EVICT) { // CODE EDIT (3Q)
+                    fprintf(stderr, "[DEBUG] bytes in cold buffer = %ld \n", total_bytes);
                     if (settings.evict_to_free == 0) {
                         /* Don't think we need a counter for this. It'll OOM.  */
                         break;

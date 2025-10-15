@@ -19,6 +19,7 @@ typedef struct history_item {
 // Creators
 bool history_buffer_init(size_t capacity);
 void history_buffer_cleanup(void);
+void destroy_history_item(history_item* hi);
 
 // Manipulators
 void history_buffer_enqueue(const char* key, uint8_t nkey, rel_time_t exptime, int nbytes,

@@ -10,8 +10,9 @@
 #include <string.h>
 #include <sys/file.h>
 
+#define PATH_MAX 512
+
 static char* _base_dir;
-static int _maxlen;
 
 void disk_storage_init(const char* base_dir)
 {
@@ -28,10 +29,6 @@ void disk_storage_init(const char* base_dir)
          exit(EXIT_FAILURE);
       }
    }
-   // +1 for directory separator "/"
-   // +UINT8_MAX for the maxlen of the key
-   // +1 for the end of the char '\0'
-   _maxlen = strlen(_base_dir) + 1 + UINT8_MAX + 1;
 }
 
 void disk_storage_cleanup(void)
@@ -72,11 +69,11 @@ static void safe_key_copy(char* safe_key, const char* key, uint8_t nkey)
 
 size_t disk_storage_read(void* ptr, size_t nbytes, const char* key, uint8_t nkey)
 {
-   char* filename = (char*)malloc(_maxlen * sizeof(char));
+   char filename[PATH_MAX + 1];
    char safe_key[UINT8_MAX + 1];
 
    safe_key_copy(safe_key, key, nkey);
-   snprintf(filename, _maxlen, "%s/%s", _base_dir, safe_key);
+   snprintf(filename, PATH_MAX, "%s/%s", _base_dir, safe_key);
    int fd = open(filename, O_RDONLY);
    
    if (fd < 0) {
@@ -104,11 +101,11 @@ size_t disk_storage_read(void* ptr, size_t nbytes, const char* key, uint8_t nkey
 
 size_t disk_storage_write(const void* ptr, size_t nbytes, const char* key, uint8_t nkey)
 {
-   char* filename = (char*)malloc(_maxlen * sizeof(char));
+   char filename[PATH_MAX + 1];
    char safe_key[UINT8_MAX + 1];
 
    safe_key_copy(safe_key, key, nkey);
-   snprintf(filename, _maxlen, "%s/%s", _base_dir, safe_key);
+   snprintf(filename, PATH_MAX, "%s/%s", _base_dir, safe_key);
 
    int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_SYNC, 0644);
    if (fd < 0) {
@@ -136,11 +133,11 @@ size_t disk_storage_write(const void* ptr, size_t nbytes, const char* key, uint8
 
 bool disk_storage_delete(const char* key, uint8_t nkey)
 {
-   char* filename = (char*)malloc(_maxlen * sizeof(char));
+   char filename[PATH_MAX + 1];
    char safe_key[UINT8_MAX + 1];
 
    safe_key_copy(safe_key, key, nkey);
-   snprintf(filename, _maxlen, "%s/%s", _base_dir, safe_key);
+   snprintf(filename, PATH_MAX, "%s/%s", _base_dir, safe_key);
    return (remove(filename) == 0);
 }
 
@@ -148,10 +145,5 @@ bool disk_storage_delete(const char* key, uint8_t nkey)
 char* base_dir()
 {
    return _base_dir;
-}
-
-char* filename()
-{
-   return _filename;
 }
 #endif // UNIT_TESTING

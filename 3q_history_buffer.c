@@ -16,7 +16,7 @@ typedef struct history_buffer {
 static history_buffer* _history = NULL;
 static pthread_mutex_t _history_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static void destroy_history_item(history_item* hi)
+void destroy_history_item(history_item* hi)
 {
    free(hi->key);
    free(hi);
@@ -171,22 +171,6 @@ size_t history_buffer_max_mem_usage(void)
       return 0;
    }
    return sizeof(history_buffer) + _history->capacity * (sizeof(history_item) + UINT8_MAX * sizeof(char));
-}
-
-void history_buffer_print(void)
-{
-   history_item* hi = _history->head;
-   fprintf(stderr, "history buffer {");
-   while (hi != NULL)
-   {
-      fprintf(stderr, "%.*s", hi->nkey, hi->key);
-      hi = hi->next;
-      if (hi != NULL) {
-         fprintf(stderr, ", ");
-      }
-   }
-   fprintf(stderr, "}\n");
-   
 }
 
 #ifdef UNIT_TESTING
