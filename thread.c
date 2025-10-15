@@ -888,10 +888,10 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
     
     // BEGIN CODE (3Q)
     item* old_it = it;
-    if (it && ITEM_lruid(it) == COLD_LRU && do_decompress_item(&it, t)) { // old_it->refcount 2 -> 1
+    if (it && ITEM_lruid(it) == COLD_LRU && do_decompress_item(&it)) {
         assert(old_it->refcount == 1);
         refcount_incr(it);
-        do_item_remove(old_it); // old_it->refcount 1 -> 0 -> item_free
+        do_item_remove(old_it);
         if (settings.verbose >= 2) {
             fprintf(stderr, "[DEBUG] item decompressed and moved to slabs class %d\n", it->slabs_clsid);
         }
@@ -1173,3 +1173,15 @@ void memcached_thread_init(int nthreads, void *arg) {
     pthread_mutex_unlock(&init_lock);
 }
 
+// BEGIN CODE (3Q)
+int get_thread_base_id(void)
+{
+    pthread_t self = pthread_self();
+    for (int i = 0; i < settings.num_threads; ++i) {
+        if (pthread_equal(self, threads[i].thread_id)) {
+            return i;
+        }
+    }
+    return -1;
+}
+// END CODE (3Q)

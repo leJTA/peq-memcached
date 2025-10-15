@@ -8,11 +8,11 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <string.h>
+#include <sys/file.h>
+
+#define PATH_MAX 512
 
 static char* _base_dir;
-static char* _filename;
-static int _maxlen;
-static char _safe_key[UINT8_MAX + 1];
 
 void disk_storage_init(const char* base_dir)
 {
@@ -29,28 +29,19 @@ void disk_storage_init(const char* base_dir)
          exit(EXIT_FAILURE);
       }
    }
-   // +1 for directory separator "/"
-   // +UINT8_MAX for the maxlen of the key
-   // +1 for the end of the char '\0'
-   _maxlen = strlen(_base_dir) + 1 + UINT8_MAX + 1;
-   _filename = (char*)calloc(_maxlen, sizeof(char));
 }
 
 void disk_storage_cleanup(void)
 {
-   char cmd[512];
-   snprintf(cmd, sizeof(cmd), "rm -rf %s", _base_dir);
-   system(cmd);
    free(_base_dir);
-   free(_filename);
 }
 
-static void safe_key_copy(const char* key, uint8_t nkey)
+static void safe_key_copy(char* safe_key, const char* key, uint8_t nkey)
 {
-   strncpy(_safe_key, key, nkey);
-   _safe_key[nkey] = '\0';
+   strncpy(safe_key, key, nkey);
+   safe_key[nkey] = '\0';
 
-   for (char *p = _safe_key; *p != '\0'; p++) {
+   for (char *p = safe_key; *p != '\0'; p++) {
       switch (*p) {
       case '/':
       case '\\':
@@ -76,47 +67,83 @@ static void safe_key_copy(const char* key, uint8_t nkey)
    }
 }
 
-size_t disk_storage_read(void* ptr, int ntotal, const char* key, uint8_t nkey)
+size_t disk_storage_read(void* ptr, size_t nbytes, const char* key, uint8_t nkey)
 {
-   safe_key_copy(key, nkey);
-   snprintf(_filename, _maxlen, "%s/%s", _base_dir, _safe_key);
-   FILE* file = fopen(_filename, "r");
+   char filename[PATH_MAX + 1];
+   char safe_key[UINT8_MAX + 1];
 
-   if (file == NULL) return 0;
-   size_t count = fread((char*)ptr, sizeof(char), ntotal, file);
-   fclose(file);
+   safe_key_copy(safe_key, key, nkey);
+   snprintf(filename, PATH_MAX, "%s/%s", _base_dir, safe_key);
+   int fd = open(filename, O_RDONLY);
+   
+   if (fd < 0) {
+      perror("open");
+      return 0;
+   }
+   
+   size_t bytes_read = 0;
+   while (bytes_read < nbytes) {
+      ssize_t r = read(fd, (char*)ptr + bytes_read, nbytes - bytes_read);
+      if (r < 0) {
+         if (errno == EINTR) continue; // retry
+         perror("read");
+         flock(fd, LOCK_UN);
+         close(fd);
+         return 0;
+      }
+      if (r == 0) break; // EOF
+      bytes_read += r;
+   }
 
-   return count;
+   close(fd);
+   return bytes_read;
 }
 
-size_t disk_storage_write(const void* ptr, int ntotal, const char* key, uint8_t nkey)
+size_t disk_storage_write(const void* ptr, size_t nbytes, const char* key, uint8_t nkey)
 {
-   safe_key_copy(key, nkey);
-   snprintf(_filename, _maxlen, "%s/%s", _base_dir, _safe_key);
-   FILE* file = fopen(_filename, "w");
+   char filename[PATH_MAX + 1];
+   char safe_key[UINT8_MAX + 1];
 
-   if (file == NULL) return 0;
-   size_t count = fwrite((char*)ptr, sizeof(char), ntotal, file);
-   fclose(file);
+   safe_key_copy(safe_key, key, nkey);
+   snprintf(filename, PATH_MAX, "%s/%s", _base_dir, safe_key);
 
-   return count;
+   int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_SYNC, 0644);
+   if (fd < 0) {
+      perror("open");
+      return -1;
+   }
+
+   size_t bytes_written = 0;
+   while (bytes_written < nbytes) {
+      ssize_t w = write(fd, (char*)ptr + bytes_written, nbytes - bytes_written);
+      if (w < 0) {
+         if (errno == EINTR) continue; // retry
+         perror("write");
+         flock(fd, LOCK_UN);
+         close(fd);
+         return -1;
+      }
+      bytes_written += w;
+   }
+
+   fsync(fd); // force write to the disk
+   close(fd);
+   return bytes_written;
 }
 
 bool disk_storage_delete(const char* key, uint8_t nkey)
 {
-   safe_key_copy(key, nkey);
-   snprintf(_filename, _maxlen, "%s/%s", _base_dir, _safe_key);
-   return (remove(_filename) == 0);
+   char filename[PATH_MAX + 1];
+   char safe_key[UINT8_MAX + 1];
+
+   safe_key_copy(safe_key, key, nkey);
+   snprintf(filename, PATH_MAX, "%s/%s", _base_dir, safe_key);
+   return (remove(filename) == 0);
 }
 
 #ifdef UNIT_TESTING
 char* base_dir()
 {
    return _base_dir;
-}
-
-char* filename()
-{
-   return _filename;
 }
 #endif // UNIT_TESTING

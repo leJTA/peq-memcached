@@ -1100,3 +1100,7 @@ extern void drop_worker_privileges(void);
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
+
+// BEGIN CODE (3Q)
+int get_thread_base_id(void);
+// END CODE (3Q)

@@ -38,7 +38,6 @@ typedef struct {
     uint64_t tailrepairs;
     uint64_t expired_unfetched; /* items reclaimed but never touched */
     uint64_t evicted_unfetched; /* items evicted but never touched */
-    uint64_t evicted_active; /* items evicted that should have been shuffled */
     uint64_t crawler_reclaimed;
     uint64_t crawler_items_checked;
     uint64_t lrutail_reflocked;
@@ -753,7 +752,6 @@ void item_stats_totals(ADD_STAT add_stats, void *c) {
             totals.reclaimed += itemstats[i].reclaimed;
             totals.expired_unfetched += itemstats[i].expired_unfetched;
             totals.evicted_unfetched += itemstats[i].evicted_unfetched;
-            totals.evicted_active += itemstats[i].evicted_active;
             totals.crawler_reclaimed += itemstats[i].crawler_reclaimed;
             totals.crawler_items_checked += itemstats[i].crawler_items_checked;
             totals.lrutail_reflocked += itemstats[i].lrutail_reflocked;
@@ -768,10 +766,6 @@ void item_stats_totals(ADD_STAT add_stats, void *c) {
                 (unsigned long long)totals.expired_unfetched);
     APPEND_STAT("evicted_unfetched", "%llu",
                 (unsigned long long)totals.evicted_unfetched);
-    if (settings.lru_maintainer_thread) {
-        APPEND_STAT("evicted_active", "%llu",
-                    (unsigned long long)totals.evicted_active);
-    }
     APPEND_STAT("evictions", "%llu",
                 (unsigned long long)totals.evicted);
     APPEND_STAT("reclaimed", "%llu",
@@ -824,7 +818,6 @@ void item_stats(ADD_STAT add_stats, void *c) {
             totals.tailrepairs += itemstats[i].tailrepairs;
             totals.expired_unfetched += itemstats[i].expired_unfetched;
             totals.evicted_unfetched += itemstats[i].evicted_unfetched;
-            totals.evicted_active += itemstats[i].evicted_active;
             totals.crawler_reclaimed += itemstats[i].crawler_reclaimed;
             totals.crawler_items_checked += itemstats[i].crawler_items_checked;
             totals.lrutail_reflocked += itemstats[i].lrutail_reflocked;
@@ -891,10 +884,6 @@ void item_stats(ADD_STAT add_stats, void *c) {
                             "%llu", (unsigned long long)totals.expired_unfetched);
         APPEND_NUM_FMT_STAT(fmt, n, "evicted_unfetched",
                             "%llu", (unsigned long long)totals.evicted_unfetched);
-        if (settings.lru_maintainer_thread) {
-            APPEND_NUM_FMT_STAT(fmt, n, "evicted_active",
-                                "%llu", (unsigned long long)totals.evicted_active);
-        }
         APPEND_NUM_FMT_STAT(fmt, n, "crawler_reclaimed",
                             "%llu", (unsigned long long)totals.crawler_reclaimed);
         APPEND_NUM_FMT_STAT(fmt, n, "crawler_items_checked",
@@ -904,6 +893,8 @@ void item_stats(ADD_STAT add_stats, void *c) {
         if (settings.lru_maintainer_thread) {
             APPEND_NUM_FMT_STAT(fmt, n, "moves_to_cold",
                                 "%llu", (unsigned long long)totals.moves_to_cold);
+            APPEND_NUM_FMT_STAT(fmt, n, "moves_to_history_buffer",
+                                "%llu", (unsigned long long)totals.moves_to_history_buffer);
             APPEND_NUM_FMT_STAT(fmt, n, "moves_to_warm",
                                 "%llu", (unsigned long long)totals.moves_to_warm);
             APPEND_NUM_FMT_STAT(fmt, n, "moves_within_lru",
@@ -994,22 +985,28 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
     // BEGIN CODE (3Q)
     if (it == NULL) {
         history_buffer_lock();
-        bool found_and_removed = history_buffer_remove(key, nkey);
+        history_item* hi = history_buffer_remove(key, nkey);
         history_buffer_unlock();
 
-        if (found_and_removed) {
-            char* buff = (char*)buffer_pool_data(t->thread_baseid);
-            size_t ntotal = disk_storage_read(buff, buffer_pool_bufsize(), key, nkey);
-            uint8_t id = slabs_clsid(ntotal);
-            it = do_item_alloc_pull(ntotal, id);
+        if (hi != NULL) {
+            it = do_item_alloc(key, nkey, 0, hi->exptime, hi->nbytes);
             
             if (it != NULL) {
-                memcpy(it, buff, ntotal);
-                it->slabs_clsid |= WARM_LRU;
                 it->refcount = 0;
+                it->it_flags = hi->it_flags;
+                it->slabs_clsid = hi->slabs_clsid;
+                
+                size_t nbytes = disk_storage_read(ITEM_data(it), it->nbytes, key, nkey);
+                memcpy(ITEM_data(it) + nbytes, "\r\n", 2);
+
+                assert(ITEM_clsid(it) == hi->slabs_clsid);
+                assert(it->nbytes == nbytes + 2);
+
+                it->slabs_clsid |= WARM_LRU;
                 uint32_t hv = hash(key, nkey);
                 do_item_link(it, hv, ITEM_get_cas(it));
             }
+            destroy_history_item(hi);
         }
     }
     // END CODE (3Q)
@@ -1200,7 +1197,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                 if (sizes_bytes[id] > limit || flags & LRU_PULL_EVICT) {
                     if (cur_lru == WARM_LRU) {
                         item* old_it = search;
-                        if (do_compress_item(&search, NULL)) { // old_it->refcount 2 -> 1
+                        if (do_compress_item(&search)) { // old_it->refcount 2 -> 1
                             // if true, item has been moved to COLD
                             itemstats[id].moves_to_cold++;
                             // delete the old item
@@ -1218,11 +1215,14 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                     else {
                         history_buffer_lock();
                         assert(!history_buffer_contains(ITEM_key(search), search->nkey));
-                        history_buffer_enqueue(ITEM_key(search), search->nkey);
+                        history_buffer_enqueue(ITEM_key(search), search->nkey, search->exptime, 
+                                               search->nbytes, search->it_flags & ~ITEM_LINKED, // item will be unlinked
+                                               search->slabs_clsid
+                                            );
                         history_buffer_unlock();
                         itemstats[id].moves_to_history_buffer++;
                         do_item_unlink_nolock(search, hv);
-                        disk_storage_write(search, ITEM_ntotal(search), ITEM_key(search), search->nkey); // This is very expensive !
+                        // disk_storage_write(ITEM_data(search), search->nbytes - 2, ITEM_key(search), search->nkey); // This is very expensive !
                         if (settings.slab_automove == 2) {
                             slabs_reassign(settings.slab_rebal, -1, orig_id, SLABS_REASSIGN_ALLOW_EVICTIONS);
                         }
@@ -1241,6 +1241,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                 it = search; /* No matter what, we're stopping */
                 limit = settings.maxbytes * (100 - settings.hot_lru_pct - settings.warm_lru_pct) / 100; // CODE (3Q)
                 if (total_bytes > limit || flags & LRU_PULL_EVICT) { // CODE EDIT (3Q)
+                    fprintf(stderr, "[DEBUG] bytes in cold buffer = %ld \n", total_bytes);
                     if (settings.evict_to_free == 0) {
                         /* Don't think we need a counter for this. It'll OOM.  */
                         break;
@@ -1251,9 +1252,6 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                         itemstats[id].evicted_nonzero++;
                     if ((search->it_flags & ITEM_FETCHED) == 0) {
                         itemstats[id].evicted_unfetched++;
-                    }
-                    if ((search->it_flags & ITEM_ACTIVE)) {
-                        itemstats[id].evicted_active++;
                     }
                     LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EVICTION, search);
                     STORAGE_delete(ext_storage, search);
@@ -1844,6 +1842,7 @@ bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
     // 4. replace old item with new item
     assert(old_it->it_flags & ITEM_LINKED);
     uint32_t hv = hash(ITEM_key(old_it), old_it->nkey);
+    assert(assoc_find(ITEM_key(old_it), old_it->nkey, hv) != NULL);
     if (new_it->nbytes < old_it->nbytes) {
         // compression, move to COLD
         new_it->slabs_clsid |= COLD_LRU;
