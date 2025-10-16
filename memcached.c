@@ -5949,7 +5949,7 @@ int main (int argc, char **argv) {
             fprintf(stderr, "[ERROR] unable to init buffer pool\n");
         } 
         // history should hold identifier for as many pages as would fit on 50% of the cache (Johnson and Shasha, 1994).
-        success = history_buffer_init((settings.maxbytes / settings.item_size_max) / 2);
+        success = history_buffer_init((settings.maxbytes / settings.item_size_max));
         if (!success) {
             fprintf(stderr, "[ERROR] unable to init history buffer\n");
         } 

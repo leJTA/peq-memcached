@@ -2,11 +2,12 @@
 """
 memcache_workload.py
 
-Génère un ensemble de données et exécute des requêtes get/set aléatoires
-avec pymemcache. Usage example:
+Generates a dataset and performs random get/set requests
+against a Memcached server using pymemcache.
+
+Example usage:
 
     python memcache_workload.py --host localhost --port 11211 --ops 20000 --threads 8
-
 """
 
 import argparse
@@ -21,9 +22,7 @@ from pymemcache.client.base import Client
 
 
 def generate_payload(size_bytes):
-    """Génère un bytes de taille size_bytes."""
-    # Génère une chaîne répétitive basée sur alphanumérics pour lisibilité.
-    # b = "".join(random.choices(string.ascii_letters + string.digits, k=size_bytes))
+    """Generate a random bytes payload of size size_bytes."""
     random.seed(0)
     base = "".join(random.choices(string.ascii_letters + string.digits, k=1024)).encode(
         "ascii"
@@ -33,7 +32,7 @@ def generate_payload(size_bytes):
 
 
 def percentile(data, p):
-    """Retourne la valeur du percentile p (ex : p=95 -> P95)."""
+    """Return the p-th percentile value (e.g., p=95 -> P95)."""
     if not data:
         return 0.0
     k = (len(data) - 1) * (p / 100.0)
@@ -47,6 +46,7 @@ def percentile(data, p):
 
 
 def latency_stats(data):
+    """Compute latency statistics: mean, P50, P95, P99."""
     if not data:
         return (0, 0, 0, 0)
     data_sorted = sorted(data)
@@ -59,11 +59,10 @@ def latency_stats(data):
 
 def precompute_zipf_indices(n_items, n_ops, s):
     """
-    Pré-calcul des indices d'accès suivant une loi de Zipf tronquée à [0, n_items-1].
+    Precompute access indices following a truncated Zipf distribution in [0, n_items-1].
     """
     np.random.seed(0)
     raw = np.random.zipf(s, n_ops)
-    # Réduire à [0, n_items-1] (car zipf peut produire > n_items)
     raw = raw % n_items
     return raw
 
@@ -72,8 +71,8 @@ def worker_thread(
     host, port, keys, data_list, access_indices, ops_per_thread, set_ratio, thread_id
 ):
     """
-    Thread worker : effectue des opérations GET/SET sur Memcached.
-    Retourne un dict de statistiques.
+    Worker thread: performs GET/SET operations on Memcached.
+    Returns a statistics dictionary.
     """
     client = Client((host, port), connect_timeout=1, timeout=2)
     stats = {
@@ -85,11 +84,12 @@ def worker_thread(
         "set_latency": [],
         "errors": 0,
     }
+
     try:
         for idx in access_indices:
             key = keys[idx]
             if random.random() < set_ratio:
-                # set
+                # SET operation
                 payload = data_list[idx]
                 t0 = time.perf_counter()
                 try:
@@ -100,7 +100,7 @@ def worker_thread(
                 stats["sets"] += 1
                 stats["set_latency"].append((t1 - t0) * 1000)
             else:
-                # get
+                # GET operation
                 t0 = time.perf_counter()
                 try:
                     value = client.get(key)
@@ -119,69 +119,69 @@ def worker_thread(
             client.close()
         except Exception:
             pass
+
     return stats
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Workload memcached get/set avec pymemcache"
+        description="Memcached workload generator (GET/SET) using pymemcache"
     )
-    parser.add_argument("--host", default="localhost", help="Host memcached")
-    parser.add_argument("--port", type=int, default=11211, help="Port memcached")
+    parser.add_argument("--host", default="localhost", help="Memcached host")
+    parser.add_argument("--port", type=int, default=11211, help="Memcached port")
     parser.add_argument(
-        "--num-items", type=int, default=1000, help="Nombre d'items à générer"
-    )
-    parser.add_argument(
-        "--item-size-kib", type=int, default=256, help="Taille d'un item en KiB"
+        "--num-items", type=int, default=1000, help="Number of items to generate"
     )
     parser.add_argument(
-        "--ops", type=int, default=10000, help="Nombre total d'opérations (get+set)"
+        "--item-size-kib", type=int, default=256, help="Item size in KiB"
+    )
+    parser.add_argument(
+        "--ops", type=int, default=10000, help="Total number of operations (get+set)"
     )
     parser.add_argument(
         "--set-ratio",
         type=float,
         default=0.1,
-        help="Fraction des ops qui sont des set (0..1)",
+        help="Fraction of operations that are SET (0..1)",
     )
-    parser.add_argument("--threads", type=int, default=4, help="Nombre de threads")
+    parser.add_argument("--threads", type=int, default=4, help="Number of threads")
     parser.add_argument(
-        "--zipf-s", type=float, default=1.16, help="Paramètre s de la loi de Zipf (>0)"
+        "--zipf-s", type=float, default=1.16, help="Zipf distribution parameter s (>0)"
     )
     args = parser.parse_args()
 
     num_items = args.num_items
-    item_size = args.item_size_kib * 1024  # KiB -> bytes
+    item_size = args.item_size_kib * 1024  # KiB → bytes
     total_ops = args.ops
     set_ratio = args.set_ratio
     threads = max(1, args.threads)
     ops_per_thread = total_ops // threads
     remaining = total_ops - ops_per_thread * threads
 
-    print(f"\n--- Paramètres ---")
-    print(f"  hôte = {args.host}:{args.port}")
+    print(f"\n--- Parameters ---")
+    print(f"  Host = {args.host}:{args.port}")
     print(
-        f"  items = {num_items}, taille = {args.item_size_kib} KiB, total ops = {total_ops}"
+        f"  Items = {num_items}, size = {args.item_size_kib} KiB, total ops = {total_ops}"
     )
-    print(f"  ratio SET = {set_ratio*100:.1f}%, threads = {threads}")
+    print(f"  SET ratio = {set_ratio*100:.1f}%, threads = {threads}")
     print(f"  Zipf (a = {args.zipf_s})")
-    print("Génération des clés et des payloads (ça peut prendre quelques secondes)...")
+    print("Generating keys and payloads (this may take a few seconds)...")
 
-    # Génération des données
+    # Data generation
     keys = [f"key_{i:04d}" for i in range(num_items)]
     data_list = []
     for i in range(num_items):
         payload = generate_payload(item_size)
         data_list.append(payload)
     print(
-        "Données générées. Total payload RAM approximative: "
-        f"{(num_items * item_size) / (1024*1024):.2f} MiB"
+        f"Data generated. Approx. memory footprint: {(num_items * item_size) / (1024*1024):.2f} MiB"
     )
 
-    # Génération des clés
-    print("Préparation de la distribution Zipf...")
+    # Zipf distribution
+    print("Preparing Zipf access pattern...")
     access_indices = precompute_zipf_indices(num_items, total_ops, args.zipf_s)
 
-    # Répartition des indices entre threads
+    # Split indices among threads
     chunks = []
     start = 0
     for t in range(threads):
@@ -190,9 +190,9 @@ def main():
         chunks.append(access_indices[start:end])
         start = end
 
-    # Lancer les threads
-    print("Démarrage du workload...")
-    start = time.perf_counter()
+    # Run workload
+    print("Starting workload...")
+    start_time = time.perf_counter()
     results = []
     with ThreadPoolExecutor(max_workers=threads) as ex:
         futures = []
@@ -213,9 +213,9 @@ def main():
             )
         for future in as_completed(futures):
             results.append(future.result())
-    elapsed = time.perf_counter() - start
+    elapsed = time.perf_counter() - start_time
 
-    # Agrégation
+    # Aggregate results
     total_gets = sum(r["gets"] for r in results)
     total_sets = sum(r["sets"] for r in results)
     total_hits = sum(r["hits"] for r in results)
@@ -228,29 +228,29 @@ def main():
     mean_g, p50_g, p95_g, p99_g = latency_stats(all_get_latency)
     mean_s, p50_s, p95_s, p99_s = latency_stats(all_set_latency)
 
-    # Affichage final
-    print("\n--- Résumé ---")
-    print(f"Durée totale        : {elapsed:.3f} s")
-    print(f"Opérations totales  : {total_gets + total_sets}")
+    # Display summary
+    print("\n--- Summary ---")
+    print(f"Total duration     : {elapsed:.3f} s")
+    print(f"Total operations   : {total_gets + total_sets}")
     print(
-        f"  GETs  : {total_gets} ({hit_ratio:.1f}% hits, {total_hits} hits / {total_misses} miss)"
+        f"  GETs  : {total_gets} ({hit_ratio:.1f}% hits, {total_hits} hits / {total_misses} misses)"
     )
     print(f"  SETs  : {total_sets}")
-    print(f"Erreurs             : {total_errors}")
-    print(f"Throughput moyen    : {(total_gets + total_sets) / elapsed:.1f} ops/s\n")
+    print(f"Errors             : {total_errors}")
+    print(f"Average throughput : {(total_gets + total_sets) / elapsed:.1f} ops/s\n")
 
     if all_get_latency:
-        print("Latences GET (ms) :")
-        print(f"  Moyenne : {mean_g:.3f}")
-        print(f"  P50     : {p50_g:.3f}")
-        print(f"  P95     : {p95_g:.3f}")
-        print(f"  P99     : {p99_g:.3f}")
+        print("GET latencies (ms):")
+        print(f"  Mean : {mean_g:.3f}")
+        print(f"  P50  : {p50_g:.3f}")
+        print(f"  P95  : {p95_g:.3f}")
+        print(f"  P99  : {p99_g:.3f}")
     if all_set_latency:
-        print("\nLatences SET (ms) :")
-        print(f"  Moyenne : {mean_s:.3f}")
-        print(f"  P50     : {p50_s:.3f}")
-        print(f"  P95     : {p95_s:.3f}")
-        print(f"  P99     : {p99_s:.3f}")
+        print("\nSET latencies (ms):")
+        print(f"  Mean : {mean_s:.3f}")
+        print(f"  P50  : {p50_s:.3f}")
+        print(f"  P95  : {p95_s:.3f}")
+        print(f"  P99  : {p99_s:.3f}")
     print("")
 
 

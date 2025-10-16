@@ -2,10 +2,10 @@
 """
 generate_files.py
 -----------------
-Génère un ensemble de fichiers binaires contenant des données aléatoires.
-Par défaut : 1000 fichiers de 256 KiB chacun, nommés key_0000, key_0001, etc.
+Generates a set of binary files containing random data.
+By default: 1000 files of 256 KiB each, named key_0000, key_0001, etc.
 
-Usage :
+Usage:
     python generate_files.py --output-dir data --num-items 1000 --item-size-kib 256
 """
 
@@ -15,9 +15,9 @@ import random
 import string
 
 
-def generate_payload(size_bytes):
-    """Génère une séquence pseudo-aléatoire de taille size_bytes."""
-    rnd = random.Random(0)
+def generate_payload(size_bytes, seed):
+    """Generate a pseudo-random byte sequence of size size_bytes."""
+    rnd = random.Random(seed)
     base = "".join(rnd.choices(string.ascii_letters + string.digits, k=1024)).encode(
         "ascii"
     )
@@ -27,37 +27,34 @@ def generate_payload(size_bytes):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Génère des fichiers binaires aléatoires nommés par clé"
+        description="Generate random binary files named by key"
     )
-    parser.add_argument("--output-dir", default="data", help="Répertoire de sortie")
+    parser.add_argument("--output-dir", default="data", help="Output directory")
     parser.add_argument(
-        "--num-items", type=int, default=1000, help="Nombre de fichiers à générer"
-    )
-    parser.add_argument(
-        "--item-size-kib", type=int, default=256, help="Taille de chaque fichier en KiB"
+        "--num-items", type=int, default=1000, help="Number of files to generate"
     )
     parser.add_argument(
-        "--seed", type=int, default=None, help="Seed aléatoire (optionnel)"
+        "--item-size-kib", type=int, default=256, help="Size of each file in KiB"
     )
+    parser.add_argument("--seed", type=int, default=0, help="Random seed (optional)")
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
     size_bytes = args.item_size_kib * 1024
-    rng = random.Random(args.seed)
 
     print(
-        f"Génération de {args.num_items} fichiers de {args.item_size_kib} KiB dans '{args.output_dir}' ..."
+        f"Generating {args.num_items} files of {args.item_size_kib} KiB in '{args.output_dir}'..."
     )
 
     for i in range(args.num_items):
         key = f"key_{i:04d}"
         filepath = os.path.join(args.output_dir, key)
-        payload = generate_payload(size_bytes)
+        payload = generate_payload(size_bytes, args.seed)
         with open(filepath, "wb") as f:
             f.write(payload)
 
     total_mb = args.num_items * size_bytes / (1024 * 1024)
-    print(f"Terminé. {args.num_items} fichiers écrits ({total_mb:.2f} MiB au total).")
+    print(f"Done. {args.num_items} files written ({total_mb:.2f} MiB total).")
 
 
 if __name__ == "__main__":
