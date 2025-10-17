@@ -4117,6 +4117,12 @@ static void usage(void) {
            "   - no_modern:           uses defaults of previous major version (1.4.x)\n",
            settings.slab_chunk_size_max / (1 << 10), settings.logger_watcher_buf_size / (1 << 10),
            settings.logger_buf_size / (1 << 10));
+    // BEGIN CODE (3Q)
+    printf("   - compression_algo:    (3Q) compression algorithm to use for the cold buffer.\n"
+           "                            ZSTD = 0 (default), LZ4 = 1, SNAPPY = 2\n"
+           "   - min_compression_ratio: (3Q) minimum compression ratio for an item to be admited in\n"
+           "                          the cold buffer (default: %.2f)\n", settings.compression_ratio_min);
+    // END CODE (3Q)
     verify_default("tail_repair_time", settings.tail_repair_time == TAIL_REPAIR_TIME_DEFAULT);
     verify_default("lru_crawler_tocrawl", settings.lru_crawler_tocrawl == 0);
     verify_default("idle_timeout", settings.idle_timeout == 0);
@@ -4796,6 +4802,10 @@ int main (int argc, char **argv) {
 #ifdef SOCK_COOKIE_ID
         COOKIE_ID,
 #endif
+        // BEGIN CODE (3Q)
+        COMPRESSION_ALGO,
+        MIN_COMPRESSION_RATIO,
+        // END CODE (3Q)
     };
     char *const subopts_tokens[] = {
         [MAXCONNS_FAST] = "maxconns_fast",
@@ -4860,6 +4870,8 @@ int main (int argc, char **argv) {
 #ifdef SOCK_COOKIE_ID
         [COOKIE_ID] = "sock_cookie_id",
 #endif
+        [COMPRESSION_ALGO] = "compression_algo",
+        [MIN_COMPRESSION_RATIO] = "min_compression_ratio",
         NULL
     };
 
@@ -5617,7 +5629,39 @@ int main (int argc, char **argv) {
                 (void)safe_strtoul(subopts_value, &settings.sock_cookie_id);
                 break;
 #endif
+            // BEGIN CODE (3Q)
+            case COMPRESSION_ALGO:
+                if (subopts_value == NULL) {
+                    fprintf(stderr, "Missing compression_algo argument\n");
+                    goto error;
+                }
+                if (strcmp(subopts_value, "zstd") == 0) {
+                    settings.comp_algo = COMPRESSION_ZSTD;
+                }
+                else if (strcmp(subopts_value, "lz4") == 0) {
+                    settings.comp_algo = COMPRESSION_LZ4;
+                }
+                else if (strcmp(subopts_value, "snappy") == 0) {
+                    settings.comp_algo = COMPRESSION_SNAPPY;
+                }
+                else {
+                    fprintf(stderr, "Illegal value for compression algo \"%s\"\n", subopts_value);
+                    goto error;
+                }
+                break;
+            case MIN_COMPRESSION_RATIO:
+                if (subopts_value == NULL) {
+                    fprintf(stderr, "Missing min_compression_ratio argument\n");
+                    goto error;
+                }
+                settings.compression_ratio_min = atof(subopts_value);
+                if (settings.compression_ratio_min < 1) {
+                    fprintf(stderr, "Compression ratio should be greater than 1\n");
+                    exit(EX_USAGE);
+                }
+                break;
             default:
+            // END CODE (3Q)
 #ifdef EXTSTORE
                 // TODO: differentiating response code.
                 if (storage_read_config(storage_cf, &subopts_temp)) {

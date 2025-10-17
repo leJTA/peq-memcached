@@ -1,22 +1,26 @@
 #include "httplib.h"
+#define XXH_INLINE_ALL
+#include "xxhash.h"
+#include <atomic>
 #include <fstream>
 #include <iostream>
+#include <libmemcached/memcached.h>
 #include <string>
 #include <thread>
 #include <vector>
-#include <atomic>
-#include <libmemcached/memcached.h>
 
 const std::string DATA_DIR = "/tmp/3q-items-data";
 const int NUM_THREADS = 4;
 
 struct Memc {
 	memcached_st* memc;
-	Memc() {
+	Memc()
+	{
 		memc = memcached_create(nullptr);
 		memcached_server_add(memc, "127.0.0.1", 11211);
 	}
-	~Memc() {
+	~Memc()
+	{
 		if (memc) {
 			memcached_free(memc);
 		}
@@ -29,11 +33,21 @@ std::atomic<unsigned long> hits;
 httplib::Server server;
 
 // Signal handler
-void handle_signal(int sig) {
+void handle_signal(int sig)
+{
 	if (sig == SIGINT || sig == SIGTERM) {
 		std::cerr << "\n[Signal] Caught Ctrl+C, stopping server..." << std::endl;
 		server.stop(); // Gracefully stop accepting new requests
 	}
+}
+
+std::string get_xxhash_prefix(const std::string& key)
+{
+	XXH64_hash_t hash = XXH64(key.c_str(), key.length(), 0);
+	std::stringstream ss;
+	ss << std::uppercase << std::hex << std::setw(16) << std::setfill('0') << hash;
+	std::string hash_hex = ss.str();
+	return hash_hex.substr(0, 2);
 }
 
 int main()
@@ -63,7 +77,7 @@ int main()
 		}
 
 		// Read file from disk
-		std::ifstream file(DATA_DIR + "/" + key, std::ios::binary);
+		std::ifstream file(DATA_DIR + "/" + get_xxhash_prefix(key) + "/" + key, std::ios::binary);
 		if (!file) {
 			res.status = 404;
 			return;
@@ -79,17 +93,18 @@ int main()
 		memcached_set(memc, key.c_str(), key.size(), buffer.data(), buffer.size(), 0, 0);
 	});
 
-	std::cout << "[Server] Listening on port 8080 with " << NUM_THREADS << " worker threads..." 
+	std::cout << "[Server] Listening on port 8000 with " << NUM_THREADS << " worker threads..."
 				 << std::endl;
 
 	if (!server.listen("0.0.0.0", 8000)) {
 		std::cerr << "Server start-up failure\n";
 	}
-	
-	std::cout << "[Server] Shutting down gracefully...\n\n";
-	std::cout << "[Stats] Hits   " << hits << "\n";
-	std::cout << "[Stats] Misses " << misses << " (Miss rate = " 
-				 << 100 * (double)misses / (hits + misses) << "%)\n";
+
+	std::cout << "[Server] Shutting down gracefully...\n\n"
+				 << "[Stats] Number of requests " << hits + misses << "\n"
+				 << "          Hits   " << hits << "\n"
+				 << "          Misses " << misses
+				 << " (Miss rate = " << 100 * (double)misses / (hits + misses) << "%)\n";
 
 	return 0;
 }

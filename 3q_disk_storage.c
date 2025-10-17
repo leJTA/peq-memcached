@@ -1,4 +1,6 @@
 #include "3q_disk_storage.h"
+#define XXH_INLINE_ALL
+#include "xxhash.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -9,8 +11,9 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/file.h>
+#include <ctype.h>
 
-#define PATH_MAX 512
+#define ITEM_PATH_MAX 512
 
 static char* _base_dir;
 
@@ -67,13 +70,22 @@ static void safe_key_copy(char* safe_key, const char* key, uint8_t nkey)
    }
 }
 
+static void get_xxhash_prefix(char dest[3], const char* key, uint8_t nkey) {
+   XXH64_hash_t hash = XXH64(key, nkey, 0);
+   snprintf(dest, 3, "%02x", (unsigned int)(hash >> 56));
+   dest[0] = toupper(dest[0]);
+   dest[1] = toupper(dest[1]);
+}
+
 size_t disk_storage_read(void* ptr, size_t nbytes, const char* key, uint8_t nkey)
 {
-   char filename[PATH_MAX + 1];
+   char filename[ITEM_PATH_MAX + 1];
    char safe_key[UINT8_MAX + 1];
+   char subdir[3];
 
    safe_key_copy(safe_key, key, nkey);
-   snprintf(filename, PATH_MAX, "%s/%s", _base_dir, safe_key);
+   get_xxhash_prefix(subdir, safe_key, nkey);
+   snprintf(filename, ITEM_PATH_MAX, "%s/%s/%s", _base_dir, subdir, safe_key);
    int fd = open(filename, O_RDONLY);
    
    if (fd < 0) {
@@ -101,11 +113,13 @@ size_t disk_storage_read(void* ptr, size_t nbytes, const char* key, uint8_t nkey
 
 size_t disk_storage_write(const void* ptr, size_t nbytes, const char* key, uint8_t nkey)
 {
-   char filename[PATH_MAX + 1];
+   char filename[ITEM_PATH_MAX + 1];
    char safe_key[UINT8_MAX + 1];
+   char subdir[3];
 
    safe_key_copy(safe_key, key, nkey);
-   snprintf(filename, PATH_MAX, "%s/%s", _base_dir, safe_key);
+   get_xxhash_prefix(subdir, safe_key, nkey);
+   snprintf(filename, ITEM_PATH_MAX, "%s/%s/%s", _base_dir, subdir, safe_key);
 
    int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_SYNC, 0644);
    if (fd < 0) {
@@ -133,11 +147,11 @@ size_t disk_storage_write(const void* ptr, size_t nbytes, const char* key, uint8
 
 bool disk_storage_delete(const char* key, uint8_t nkey)
 {
-   char filename[PATH_MAX + 1];
+   char filename[ITEM_PATH_MAX + 1];
    char safe_key[UINT8_MAX + 1];
 
    safe_key_copy(safe_key, key, nkey);
-   snprintf(filename, PATH_MAX, "%s/%s", _base_dir, safe_key);
+   snprintf(filename, ITEM_PATH_MAX, "%s/%s", _base_dir, safe_key);
    return (remove(filename) == 0);
 }
 
