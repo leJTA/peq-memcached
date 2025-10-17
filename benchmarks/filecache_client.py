@@ -42,14 +42,13 @@ def latency_stats(data):
     return (mean, p50, p95, p99)
 
 
-def precompute_zipf_indices(n_items, n_ops, a):
+def precompute_indices(n_items, n_ops, a):
     """
-    Precompute access indices following a Zipf distribution,
+    Precompute access indices following a pareto distribution,
     truncated to [0, n_items-1].
     """
     np.random.seed(0)
-    raw = np.random.zipf(a, n_ops)
-    raw = raw % n_items
+    raw = (np.random.pareto(a, n_ops) % n_items).astype(int)
     return raw
 
 
@@ -87,13 +86,12 @@ async def main_async(args):
 
     print(f"\n--- Parameters ---")
     print(f"  file server = {args.host}:{args.port}")
-    print(f"  Zipf (a = {args.zipf})")
+    print(f"  Skewness    = {args.skewness}\n")
 
     # Generate keys
     print("Generating keys...")
     keys = [f"key_{i:04d}" for i in range(num_items)]
-    print("Preparing Zipf distribution...")
-    access_indices = precompute_zipf_indices(num_items, total_ops, args.zipf)
+    access_indices = precompute_indices(num_items, total_ops, args.skewness)
 
     # Split indices across threads
     print("Distributing indices across workers...")
@@ -158,7 +156,7 @@ def main():
         "--threads", type=int, default=4, help="Number of concurrent workers"
     )
     parser.add_argument(
-        "--zipf", type=float, default=1.16, help="Zipf distribution parameter a (>1)"
+        "--skewness", type=float, default=0.86, help="Skewness (default = 0.86)"
     )
     args = parser.parse_args()
 

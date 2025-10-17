@@ -13,7 +13,7 @@ import os
 import argparse
 import random
 import string
-
+import xxhash
 
 def generate_payload(size_bytes, seed):
     """Generate a pseudo-random byte sequence of size size_bytes."""
@@ -24,6 +24,9 @@ def generate_payload(size_bytes, seed):
     reps = (size_bytes // len(base)) + 1
     return (base * reps)[:size_bytes]
 
+
+def get_xxhash_prefix(key):
+    return xxhash.xxh64(key).hexdigest()[:2].upper()
 
 def main():
     parser = argparse.ArgumentParser(
@@ -48,14 +51,16 @@ def main():
 
     for i in range(args.num_items):
         key = f"key_{i:04d}"
-        filepath = os.path.join(args.output_dir, key)
+        subdir = os.path.join(args.output_dir, get_xxhash_prefix(key))
+        if not os.path.exists(subdir):
+            os.makedirs(subdir)
+        filepath = os.path.join(subdir, key)
         payload = generate_payload(size_bytes, args.seed)
         with open(filepath, "wb") as f:
             f.write(payload)
 
     total_mb = args.num_items * size_bytes / (1024 * 1024)
     print(f"Done. {args.num_items} files written ({total_mb:.2f} MiB total).")
-
 
 if __name__ == "__main__":
     main()
