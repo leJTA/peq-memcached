@@ -1,0 +1,4 @@
+#ifndef __3Q_WARM_COLD_ADJUSTER_H__
+#define __3Q_WARM_COLD_ADJUSTER_H__
+
+#endif // __3Q_WARM_COLD_ADJUSTER_H__

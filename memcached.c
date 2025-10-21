@@ -278,8 +278,9 @@ static void settings_init(void) {
     settings.watch_enabled = true;
     settings.read_buf_mem_limit = 0;
     // BEGIN CODE (3Q)
-    settings.compression_ratio_min = 1.2;
+    settings.compression_ratio_min = 2.0;
     settings.comp_algo = COMPRESSION_ZSTD;
+    settings.hist_buffer_capacity = 0;
     // END CODE (3Q)
 #ifdef MEMCACHED_DEBUG
     settings.relaxed_privileges = false;
@@ -4120,8 +4121,11 @@ static void usage(void) {
     // BEGIN CODE (3Q)
     printf("   - compression_algo:    (3Q) compression algorithm to use for the cold buffer.\n"
            "                            ZSTD = 0 (default), LZ4 = 1, SNAPPY = 2\n"
-           "   - min_compression_ratio: (3Q) minimum compression ratio for an item to be admited in\n"
-           "                          the cold buffer (default: %.2f)\n", settings.compression_ratio_min);
+           "   - min_compression_ratio:  (3Q) minimum compression ratio for an item to be admited in\n"
+           "                          the cold buffer (default: %.2f)\n"
+           "   - hist_buffer_capacity (3Q) maximum number of item references that can be stored in \n"
+           "                          the history buffer (default: maxbytes / item_size_max)\n", 
+           settings.compression_ratio_min);
     // END CODE (3Q)
     verify_default("tail_repair_time", settings.tail_repair_time == TAIL_REPAIR_TIME_DEFAULT);
     verify_default("lru_crawler_tocrawl", settings.lru_crawler_tocrawl == 0);
@@ -4805,6 +4809,7 @@ int main (int argc, char **argv) {
         // BEGIN CODE (3Q)
         COMPRESSION_ALGO,
         MIN_COMPRESSION_RATIO,
+        HIST_BUFFER_CAPACITY,
         // END CODE (3Q)
     };
     char *const subopts_tokens[] = {
@@ -4870,8 +4875,11 @@ int main (int argc, char **argv) {
 #ifdef SOCK_COOKIE_ID
         [COOKIE_ID] = "sock_cookie_id",
 #endif
+        // BEGIN CODE (3Q)
         [COMPRESSION_ALGO] = "compression_algo",
         [MIN_COMPRESSION_RATIO] = "min_compression_ratio",
+        [HIST_BUFFER_CAPACITY] = "hist_buffer_capacity",
+        // END CODE (3Q)
         NULL
     };
 
@@ -5660,6 +5668,17 @@ int main (int argc, char **argv) {
                     exit(EX_USAGE);
                 }
                 break;
+            case HIST_BUFFER_CAPACITY:
+                if (subopts_value == NULL) {
+                    fprintf(stderr, "Missing hist_buffer_capacity argument\n");
+                    goto error;
+                }
+                settings.hist_buffer_capacity = atol(subopts_value);
+                if (settings.hist_buffer_capacity <= 0) {
+                    fprintf(stderr, "History buffer capacity should be greater than 0\n");
+                    exit(EX_USAGE);
+                }
+                break;
             default:
             // END CODE (3Q)
 #ifdef EXTSTORE
@@ -5993,9 +6012,12 @@ int main (int argc, char **argv) {
             fprintf(stderr, "[ERROR] unable to init buffer pool\n");
         } 
         // history should hold identifier for as many pages as would fit on 50% of the cache (Johnson and Shasha, 1994).
-        success = history_buffer_init((settings.maxbytes / settings.item_size_max));
+        success = history_buffer_init(settings.hist_buffer_capacity > 0 
+                                          ? settings.hist_buffer_capacity 
+                                          : (settings.maxbytes / settings.item_size_max));
         if (!success) {
             fprintf(stderr, "[ERROR] unable to init history buffer\n");
+            exit(EXIT_FAILURE);
         } 
         if (settings.verbose >= 2) {
             fprintf(stderr, "[INFO] history buffer can hold %ld items\n", history_buffer_capacity());
