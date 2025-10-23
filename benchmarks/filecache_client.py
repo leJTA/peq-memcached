@@ -90,7 +90,7 @@ async def main_async(args):
 
     # Generate keys
     print("Generating keys...")
-    keys = [f"key_{i:04d}" for i in range(num_items)]
+    keys = [f"key_{i:06d}" for i in range(num_items)]
     access_indices = precompute_indices(num_items, total_ops, args.skewness)
 
     # Split indices across threads
@@ -144,19 +144,19 @@ def main():
     )
     parser.add_argument("--host", default="localhost", help="Host of filecache_server")
     parser.add_argument(
-        "--port", type=int, default=8000, help="Port of filecache_server"
+        "-p", "--port", type=int, default=8000, help="Port of filecache_server"
     )
     parser.add_argument(
-        "--num-items", type=int, default=1000, help="Total number of items"
+        "-n", "--num-items", type=int, default=1000, help="Total number of items"
     )
     parser.add_argument(
-        "--ops", type=int, default=10000, help="Total number of GET operations"
+        "-c", "--ops", type=int, default=10000, help="Total number of GET operations"
     )
     parser.add_argument(
-        "--threads", type=int, default=4, help="Number of concurrent workers"
+        "-t", "--threads", type=int, default=4, help="Number of concurrent workers"
     )
     parser.add_argument(
-        "--skewness", type=float, default=0.86, help="Skewness (default = 0.86)"
+        "-a", "--skewness", type=float, default=0.86, help="Skewness (default = 0.86)"
     )
     args = parser.parse_args()
 

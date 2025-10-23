@@ -521,6 +521,8 @@ struct settings {
     // BEGIN CODE (3Q)
     double compression_ratio_min; /* minimum compression ratio (uncompressed_size / compressed_size) */
     enum compression_algorithm comp_algo; /* ZSTD, LZ4 or SNAPPY */
+    size_t hist_buffer_capacity; /* maximum number of item references that can be stored in the history buffer */
+    bool no_compression; /* disable cold buffer and compression, equivalent to 2Q */
     // END CODE (3Q)
 #ifdef EXTSTORE
     unsigned int ext_io_threadcount; /* number of IO threads to run. */

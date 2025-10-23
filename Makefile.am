@@ -34,7 +34,8 @@ memcached_SOURCES = memcached.c memcached.h \
 						  3q_compressor.h 3q_compressor.c \
 						  3q_history_buffer.h 3q_history_buffer.c \
 						  3q_disk_storage.h 3q_disk_storage.c \
-						  3q_buffer_pool.h 3q_buffer_pool.c
+						  3q_buffer_pool.h 3q_buffer_pool.c \
+						  3q_warm_cold_adjuster.h 3q_warm_cold_adjuster.c
 
 if BUILD_SOLARIS_PRIVS
 memcached_SOURCES += solaris_priv.c

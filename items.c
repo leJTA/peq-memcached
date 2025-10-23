@@ -189,7 +189,7 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
             // BEGIN CODE EDIT (3Q)
             if (lru_pull_tail(id, HOT_LRU, 0, 0, 0, NULL) <= 0) {
                 if (settings.lru_segmented) {
-                    lru_pull_tail(id, WARM_LRU, 0, 0, 0, NULL);
+                    lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL);
             // END CODE EDIT (3Q)
                 } else {
                     break;
@@ -516,7 +516,6 @@ int do_item_link(item *it, const uint32_t hv, const uint64_t cas) {
     refcount_incr(it);
     item_stats_sizes_add(it);
 
-    // print_cache(ITEM_clsid(it));    // DEBUG (3Q)
     return 1;
 }
 
@@ -1190,14 +1189,14 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
         switch (cur_lru) {
             case HOT_LRU:
                 // BEGIN CODE EDIT (3Q)
-                limit = settings.maxbytes * settings.hot_lru_pct / 100;
+                limit = total_bytes * settings.hot_lru_pct / 100;
             case WARM_LRU:
                 if (limit == 0)
-                    limit = settings.maxbytes * settings.warm_lru_pct / 100;
-                if (sizes_bytes[id] > limit || flags & LRU_PULL_EVICT) {
+                    limit = total_bytes * settings.warm_lru_pct / 100;
+                if (sizes_bytes[id] > limit) {
                     if (cur_lru == WARM_LRU) {
                         item* old_it = search;
-                        if (do_compress_item(&search)) { // old_it->refcount 2 -> 1
+                        if (!settings.no_compression && do_compress_item(&search)) { // old_it->refcount 2 -> 1
                             // if true, item has been moved to COLD
                             itemstats[id].moves_to_cold++;
                             // delete the old item
@@ -1205,8 +1204,14 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                             // increase the refcount of the compressed item
                             refcount_incr(search);
                         }
+                        else if (settings.no_compression) {
+                            move_to_lru = COLD_LRU;
+                            itemstats[id].moves_to_cold++;
+                            do_item_unlink_q(search);
+                        }
                         else {
                             do_item_unlink_nolock(search, hv);
+                            itemstats[id].evicted++;
                             if (settings.slab_automove == 2) {
                                 slabs_reassign(settings.slab_rebal, -1, orig_id, SLABS_REASSIGN_ALLOW_EVICTIONS);
                             }
@@ -1227,7 +1232,6 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                             slabs_reassign(settings.slab_rebal, -1, orig_id, SLABS_REASSIGN_ALLOW_EVICTIONS);
                         }
                     }
-                    // print_cache(id);
                     it = search;
                     removed++;
                     break;
@@ -1239,9 +1243,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                 break;
             case COLD_LRU:
                 it = search; /* No matter what, we're stopping */
-                limit = settings.maxbytes * (100 - settings.hot_lru_pct - settings.warm_lru_pct) / 100; // CODE (3Q)
-                if (total_bytes > limit || flags & LRU_PULL_EVICT) { // CODE EDIT (3Q)
-                    fprintf(stderr, "[DEBUG] bytes in cold buffer = %ld \n", total_bytes);
+                if (flags & LRU_PULL_EVICT) {
                     if (settings.evict_to_free == 0) {
                         /* Don't think we need a counter for this. It'll OOM.  */
                         break;
@@ -1412,7 +1414,7 @@ static uint64_t lru_total_bumps_dropped(void) {
 static int lru_maintainer_juggle(const int slabs_clsid) {
     int i;
     int did_moves = 0;
-    uint64_t total_cold_bytes = 0;
+    uint64_t total_bytes = 0;
     unsigned int chunks_perslab = 0;
     //unsigned int chunks_free = 0;
     /* TODO: if free_chunks below high watermark, increase aggressiveness */
@@ -1443,24 +1445,33 @@ static int lru_maintainer_juggle(const int slabs_clsid) {
         // BEGIN CODE EDIT (3Q)
         for (int clsid = 1; clsid < LARGEST_ID; ++clsid) {
             pthread_mutex_lock(&lru_locks[clsid|COLD_LRU]);
-            total_cold_bytes += sizes_bytes[clsid|COLD_LRU];
+            total_bytes += sizes_bytes[clsid|COLD_LRU];
             pthread_mutex_unlock(&lru_locks[clsid|COLD_LRU]);
         }
 
         hot_age = cold_age * settings.hot_max_factor;
         warm_age = cold_age * settings.warm_max_factor;
+
+        // total_bytes doesn't have to be exact. cache it for the juggles.
+        pthread_mutex_lock(&lru_locks[slabs_clsid|HOT_LRU]);
+        total_bytes += sizes_bytes[slabs_clsid|HOT_LRU];
+        pthread_mutex_unlock(&lru_locks[slabs_clsid|HOT_LRU]);
+
+        pthread_mutex_lock(&lru_locks[slabs_clsid|WARM_LRU]);
+        total_bytes += sizes_bytes[slabs_clsid|WARM_LRU];
+        pthread_mutex_unlock(&lru_locks[slabs_clsid|WARM_LRU]);
         // END CODE EDIT (3Q)
     }
 
     /* Juggle HOT/WARM up to N times */
     for (i = 0; i < 500; i++) {
         int do_more = 0;
-        if (lru_pull_tail(slabs_clsid, HOT_LRU, 0, LRU_PULL_CRAWL_BLOCKS, hot_age, NULL) ||
-            lru_pull_tail(slabs_clsid, WARM_LRU, 0, LRU_PULL_CRAWL_BLOCKS, warm_age, NULL)) {
+        if (lru_pull_tail(slabs_clsid, HOT_LRU, total_bytes, LRU_PULL_CRAWL_BLOCKS, hot_age, NULL) ||
+            lru_pull_tail(slabs_clsid, WARM_LRU, total_bytes, LRU_PULL_CRAWL_BLOCKS, warm_age, NULL)) {
             do_more++;
         }
         if (settings.lru_segmented) {
-            do_more += lru_pull_tail(slabs_clsid, COLD_LRU, total_cold_bytes, LRU_PULL_CRAWL_BLOCKS, 0, NULL);
+            do_more += lru_pull_tail(slabs_clsid, COLD_LRU, total_bytes, LRU_PULL_CRAWL_BLOCKS, 0, NULL);
         }
         if (do_more == 0)
             break;
@@ -1824,9 +1835,12 @@ bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
         return false;
     }
 
-    // 1. allocate new slab
+    // 1. allocate new item
     item* new_it = do_item_alloc_pull(new_ntotal, id);
     if (new_it == NULL) {
+        pthread_mutex_lock(&lru_locks[id]);
+        itemstats[id].outofmemory++;
+        pthread_mutex_unlock(&lru_locks[id]);
         return false;
     }
 
