@@ -116,7 +116,7 @@ bool do_compress_item(item** ptr)
 		return false;
 	}
 
-	if (settings.verbose > 1) {
+	if (settings.verbose > 0) {
 		fprintf(stderr, "[DEBUG] item compressed with compression ratio = %f\n", (double)it->nbytes / compressed_size);
 	}
 

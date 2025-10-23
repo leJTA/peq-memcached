@@ -281,6 +281,7 @@ static void settings_init(void) {
     settings.compression_ratio_min = 2.0;
     settings.comp_algo = COMPRESSION_ZSTD;
     settings.hist_buffer_capacity = 0;
+    settings.no_compression = false;
     // END CODE (3Q)
 #ifdef MEMCACHED_DEBUG
     settings.relaxed_privileges = false;
@@ -4120,11 +4121,12 @@ static void usage(void) {
            settings.logger_buf_size / (1 << 10));
     // BEGIN CODE (3Q)
     printf("   - compression_algo:    (3Q) compression algorithm to use for the cold buffer.\n"
-           "                            ZSTD = 0 (default), LZ4 = 1, SNAPPY = 2\n"
-           "   - min_compression_ratio:  (3Q) minimum compression ratio for an item to be admited in\n"
+           "                            zstd (default), lz4, or snappy\n"
+           "   - min_compression_ratio: (3Q) minimum compression ratio for an item to be admited in\n"
            "                          the cold buffer (default: %.2f)\n"
-           "   - hist_buffer_capacity (3Q) maximum number of item references that can be stored in \n"
-           "                          the history buffer (default: maxbytes / item_size_max)\n", 
+           "   - hist_buffer_capacity: (3Q) maximum number of item references that can be stored in \n"
+           "                          the history buffer (default: maxbytes / item_size_max)\n"
+           "   - no_compression:      (3Q) disable compression. Equivalent to 2Q.\n",
            settings.compression_ratio_min);
     // END CODE (3Q)
     verify_default("tail_repair_time", settings.tail_repair_time == TAIL_REPAIR_TIME_DEFAULT);
@@ -4810,6 +4812,7 @@ int main (int argc, char **argv) {
         COMPRESSION_ALGO,
         MIN_COMPRESSION_RATIO,
         HIST_BUFFER_CAPACITY,
+        NO_COMPRESSION,
         // END CODE (3Q)
     };
     char *const subopts_tokens[] = {
@@ -4879,6 +4882,7 @@ int main (int argc, char **argv) {
         [COMPRESSION_ALGO] = "compression_algo",
         [MIN_COMPRESSION_RATIO] = "min_compression_ratio",
         [HIST_BUFFER_CAPACITY] = "hist_buffer_capacity",
+        [NO_COMPRESSION] = "no_compression",
         // END CODE (3Q)
         NULL
     };
@@ -5679,6 +5683,9 @@ int main (int argc, char **argv) {
                     exit(EX_USAGE);
                 }
                 break;
+            case NO_COMPRESSION:
+                settings.no_compression = true;
+                break;
             default:
             // END CODE (3Q)
 #ifdef EXTSTORE
@@ -5779,10 +5786,12 @@ int main (int argc, char **argv) {
         meta->slab_config = "1.25";
     }
 
-    if (settings.hot_lru_pct + settings.warm_lru_pct > 80) {
-        fprintf(stderr, "hot_lru_pct + warm_lru_pct cannot be more than 80%% combined\n");
+    // BEGIN CODE (3Q)
+    if (settings.no_compression && !settings.lru_segmented) {
+        fprintf(stderr, "no_compression requires lru_segmented to be true\n");
         exit(EX_USAGE);
     }
+    // END CODE (3Q)
 
     if (settings.temp_lru && !start_lru_maintainer) {
         fprintf(stderr, "temporary_ttl requires lru_maintainer to be enabled\n");
