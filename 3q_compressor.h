@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 
-void compression_resources_init(void);
+void compression_resources_init(int nres);
 void compression_resources_cleanup(void);
 
 // These methods are executed assuming that the item is already protected by a lock.
