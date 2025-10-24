@@ -48,8 +48,9 @@ def precompute_indices(n_items, n_ops, a):
     truncated to [0, n_items-1].
     """
     np.random.seed(0)
-    raw = (np.random.pareto(a, n_ops) % n_items).astype(int)
-    return raw
+    rng = np.random.default_rng()
+    indices = rng.pareto(a, n_ops).astype(int) % n_items
+    return indices
 
 
 async def worker(session, host, port, keys, access_indices, results):

@@ -62,7 +62,6 @@
 #endif
 
 // BEGIN CODE (3Q)
-#include "3q_buffer_pool.h"
 #include "3q_compressor.h"
 #include "3q_history_buffer.h"
 #include "3q_disk_storage.h"
@@ -6011,24 +6010,17 @@ int main (int argc, char **argv) {
     /* initialize other stuff */
     // BEGIN CODE (3Q)
     {
-        bool success = buffer_pool_init(
-            settings.num_threads + 1, // +1 for the LRU maintainer thread
-            settings.item_size_max + 4096 // +4096 for the worst-case ZSTD
-        );
         disk_storage_init(NULL);
-        compression_resources_init();
-        if (!success) {
-            fprintf(stderr, "[ERROR] unable to init buffer pool\n");
-        } 
+        compression_resources_init(settings.num_threads + 1); // +1 for the LRU maintainer thread
         // history should hold identifier for as many pages as would fit on 50% of the cache (Johnson and Shasha, 1994).
-        success = history_buffer_init(settings.hist_buffer_capacity > 0 
+        bool success = history_buffer_init(settings.hist_buffer_capacity > 0 
                                           ? settings.hist_buffer_capacity 
                                           : (settings.maxbytes / settings.item_size_max));
         if (!success) {
             fprintf(stderr, "[ERROR] unable to init history buffer\n");
             exit(EXIT_FAILURE);
         } 
-        if (settings.verbose >= 2) {
+        if (settings.verbose > 0) {
             fprintf(stderr, "[INFO] history buffer can hold %ld items\n", history_buffer_capacity());
             fprintf(stderr, "[INFO] history buffer max memory usage : %ld Bytes\n", history_buffer_max_mem_usage());
         }
@@ -6333,7 +6325,6 @@ int main (int argc, char **argv) {
     compression_resources_cleanup();
     history_buffer_cleanup();
     disk_storage_cleanup();
-    buffer_pool_cleanup();
     // END CODE (3Q)
 
     free(meta);

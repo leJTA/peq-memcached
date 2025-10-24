@@ -18,7 +18,6 @@
 
 // BEGIN CODE (3Q)
 #include "3q_compressor.h"
-#include "3q_buffer_pool.h"
 #include "3q_history_buffer.h"
 #include "3q_disk_storage.h"
 // END CODE (3Q)
@@ -187,7 +186,7 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
             // pulling to evict, or forcing HOT -> COLD migration.
             // As of this writing, total_bytes isn't at all used with COLD_LRU.
             // BEGIN CODE EDIT (3Q)
-            if (lru_pull_tail(id, HOT_LRU, 0, 0, 0, NULL) <= 0) {
+            if (lru_pull_tail(id, HOT_LRU, 0, LRU_PULL_EVICT, 0, NULL) <= 0) {
                 if (settings.lru_segmented) {
                     lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL);
             // END CODE EDIT (3Q)
@@ -1189,11 +1188,12 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
         switch (cur_lru) {
             case HOT_LRU:
                 // BEGIN CODE EDIT (3Q)
-                limit = total_bytes * settings.hot_lru_pct / 100;
+                limit = settings.maxbytes * settings.hot_lru_pct / 100;
             case WARM_LRU:
                 if (limit == 0)
-                    limit = total_bytes * settings.warm_lru_pct / 100;
-                if (sizes_bytes[id] > limit) {
+                    limit = settings.maxbytes * settings.warm_lru_pct / 100;
+                uint64_t current_bytes = do_get_lru_size(id) * slabs_size(orig_id);
+                if (current_bytes > limit || flags & LRU_PULL_EVICT) {
                     if (cur_lru == WARM_LRU) {
                         item* old_it = search;
                         if (!settings.no_compression && do_compress_item(&search)) { // old_it->refcount 2 -> 1
@@ -1445,20 +1445,19 @@ static int lru_maintainer_juggle(const int slabs_clsid) {
         // BEGIN CODE EDIT (3Q)
         for (int clsid = 1; clsid < LARGEST_ID; ++clsid) {
             pthread_mutex_lock(&lru_locks[clsid|COLD_LRU]);
-            total_bytes += sizes_bytes[clsid|COLD_LRU];
+            total_bytes += do_get_lru_size(slabs_clsid|COLD_LRU) * slabs_size(clsid);
             pthread_mutex_unlock(&lru_locks[clsid|COLD_LRU]);
         }
 
         hot_age = cold_age * settings.hot_max_factor;
         warm_age = cold_age * settings.warm_max_factor;
 
-        // total_bytes doesn't have to be exact. cache it for the juggles.
         pthread_mutex_lock(&lru_locks[slabs_clsid|HOT_LRU]);
-        total_bytes += sizes_bytes[slabs_clsid|HOT_LRU];
+        total_bytes += do_get_lru_size(slabs_clsid|HOT_LRU) * slabs_size(slabs_clsid);
         pthread_mutex_unlock(&lru_locks[slabs_clsid|HOT_LRU]);
 
         pthread_mutex_lock(&lru_locks[slabs_clsid|WARM_LRU]);
-        total_bytes += sizes_bytes[slabs_clsid|WARM_LRU];
+        total_bytes += do_get_lru_size(slabs_clsid|WARM_LRU) * slabs_size(slabs_clsid);
         pthread_mutex_unlock(&lru_locks[slabs_clsid|WARM_LRU]);
         // END CODE EDIT (3Q)
     }

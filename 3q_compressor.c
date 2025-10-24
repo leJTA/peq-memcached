@@ -1,6 +1,5 @@
 #include "memcached.h"
 #include "3q_compressor.h"
-#include "3q_buffer_pool.h"
 #include "slabs.h"
 
 #include <stdlib.h>
@@ -23,7 +22,7 @@ struct compression_resources {
 static struct compression_resources* _rcs;
 static int _num_threads;
 
-void compression_resources_init(void)
+void compression_resources_init(int nres)
 {
 	// +1 for the LRU maintainer thread
 	_num_threads = settings.num_threads + 1;
@@ -49,8 +48,7 @@ void compression_resources_init(void)
 			_rcs[i].buffer_size = snappy_max_compressed_length(settings.item_size_max);
 			break;
 		}
-		assert(_rcs[i].buffer_size <= buffer_pool_bufsize());
-		_rcs[i].buffer = buffer_pool_data(i);
+		_rcs[i].buffer = malloc(_rcs[i].buffer_size * sizeof(char));
 	}
 }
 
