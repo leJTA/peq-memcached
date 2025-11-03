@@ -91,6 +91,10 @@ int main()
 
 		// Store in cache
 		memcached_set(memc, key.c_str(), key.size(), buffer.data(), buffer.size(), 0, 0);
+		
+		// drop system cache
+		std::ofstream ofs("/proc/sys/vm/drop_caches");
+		ofs << "3" << std::endl;
 	});
 
 	std::cout << "[Server] Listening on port 8000 with " << NUM_THREADS << " worker threads..."

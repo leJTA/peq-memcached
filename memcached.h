@@ -20,6 +20,7 @@
 #include <assert.h>
 #include <grp.h>
 #include <signal.h>
+#include <stdatomic.h>
 /* need this to get IOV_MAX on some platforms. */
 #ifndef __need_IOV_MAX
 #define __need_IOV_MAX
@@ -385,6 +386,7 @@ struct thread_stats {
 #undef X
     struct slab_stats slab_stats[MAX_NUMBER_OF_SLAB_CLASSES];
     uint64_t lru_hits[POWER_LARGEST];
+    uint64_t lru_hits_penalized[POWER_LARGEST]; // CODE (3Q)
     uint64_t read_buf_count;
     uint64_t read_buf_bytes;
     uint64_t read_buf_bytes_free;
@@ -504,7 +506,7 @@ struct settings {
     int lru_crawler_sleep;  /* Microsecond sleep between items */
     uint32_t lru_crawler_tocrawl; /* Number of items to crawl per run */
     int hot_lru_pct; /* percentage of slab space for HOT_LRU */
-    int warm_lru_pct; /* percentage of slab space for WARM_LRU */
+    atomic_int warm_lru_pct; /* percentage of slab space for WARM_LRU */
     double hot_max_factor; /* HOT tail age relative to COLD tail */
     double warm_max_factor; /* WARM tail age relative to COLD tail */
     int crawls_persleep; /* Number of LRU crawls to run before sleeping */
@@ -599,6 +601,10 @@ extern struct settings settings;
 #define ITEM_STALE 2048
 /* if item key was sent in binary */
 #define ITEM_KEY_BINARY 4096
+// BEGIN CODE (3Q)
+/* if item is in the non penalized section of the cold buffer  */
+#define ITEM_PENALIZED 8192
+// END CODE (3Q)
 
 /**
  * Structure for storing items within memcached.
