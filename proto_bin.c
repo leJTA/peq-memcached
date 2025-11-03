@@ -494,6 +494,11 @@ static void process_bin_get_or_touch(conn *c, char *extbuf) {
         } else {
             c->thread->stats.get_cmds++;
             c->thread->stats.lru_hits[it->slabs_clsid]++;
+            // BEGIN CODE (3Q)
+            if (it->it_flags & ITEM_PENALIZED) {
+                c->thread->stats.lru_hits_penalized[it->slabs_clsid]++;
+            }
+            // BEGIN CODE (3Q)
         }
         pthread_mutex_unlock(&c->thread->stats.mutex);
 

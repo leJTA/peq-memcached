@@ -25,6 +25,7 @@
 /* Forward Declarations */
 static void item_link_q(item *it);
 static void item_unlink_q(item *it);
+static void mark_penalized(int slabs_clsid); // CODE (3Q)
 
 static unsigned int lru_type_map[4] = {HOT_LRU, WARM_LRU, COLD_LRU, TEMP_LRU};
 
@@ -35,12 +36,11 @@ typedef struct {
     uint64_t reclaimed;
     uint64_t outofmemory;
     uint64_t tailrepairs;
-    uint64_t expired_unfetched; /* items reclaimed but never touched */
-    uint64_t evicted_unfetched; /* items evicted but never touched */
+    uint64_t evicted_uncompressed;
     uint64_t crawler_reclaimed;
     uint64_t crawler_items_checked;
     uint64_t lrutail_reflocked;
-    uint64_t moves_to_history_buffer;
+    uint64_t moves_to_history_buffer;   // CODE (3Q)
     uint64_t moves_to_cold;
     uint64_t moves_to_warm;
     uint64_t moves_within_lru;
@@ -48,6 +48,7 @@ typedef struct {
     uint64_t hits_to_hot;
     uint64_t hits_to_warm;
     uint64_t hits_to_cold;
+    uint64_t hits_penalized;
     uint64_t hits_to_temp;
     uint64_t mem_requested;
     rel_time_t evicted_time;
@@ -61,6 +62,7 @@ static uint64_t sizes_bytes[LARGEST_ID];
 static unsigned int *stats_sizes_hist = NULL;
 static int stats_sizes_buckets = 0;
 static uint64_t cas_id = 1;
+static atomic_bool penalized_dirty_flags[LARGEST_ID]; // CODE (3Q)
 
 static volatile int do_run_lru_maintainer_thread = 0;
 static pthread_mutex_t lru_maintainer_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -79,7 +81,6 @@ void item_stats_reset(void) {
 void do_item_stats_add_crawl(const int i, const uint64_t reclaimed,
         const uint64_t unfetched, const uint64_t checked) {
     itemstats[i].crawler_reclaimed += reclaimed;
-    itemstats[i].expired_unfetched += unfetched;
     itemstats[i].crawler_items_checked += checked;
 }
 
@@ -748,8 +749,7 @@ void item_stats_totals(ADD_STAT add_stats, void *c) {
             pthread_mutex_lock(&lru_locks[i]);
             totals.evicted += itemstats[i].evicted;
             totals.reclaimed += itemstats[i].reclaimed;
-            totals.expired_unfetched += itemstats[i].expired_unfetched;
-            totals.evicted_unfetched += itemstats[i].evicted_unfetched;
+            totals.evicted_uncompressed += itemstats[i].evicted_uncompressed;
             totals.crawler_reclaimed += itemstats[i].crawler_reclaimed;
             totals.crawler_items_checked += itemstats[i].crawler_items_checked;
             totals.lrutail_reflocked += itemstats[i].lrutail_reflocked;
@@ -760,10 +760,8 @@ void item_stats_totals(ADD_STAT add_stats, void *c) {
             pthread_mutex_unlock(&lru_locks[i]);
         }
     }
-    APPEND_STAT("expired_unfetched", "%llu",
-                (unsigned long long)totals.expired_unfetched);
-    APPEND_STAT("evicted_unfetched", "%llu",
-                (unsigned long long)totals.evicted_unfetched);
+    APPEND_STAT("evicted_uncompressed", "%llu",
+                (unsigned long long)totals.evicted_uncompressed);
     APPEND_STAT("evictions", "%llu",
                 (unsigned long long)totals.evicted);
     APPEND_STAT("reclaimed", "%llu",
@@ -814,8 +812,7 @@ void item_stats(ADD_STAT add_stats, void *c) {
             totals.reclaimed += itemstats[i].reclaimed;
             totals.outofmemory += itemstats[i].outofmemory;
             totals.tailrepairs += itemstats[i].tailrepairs;
-            totals.expired_unfetched += itemstats[i].expired_unfetched;
-            totals.evicted_unfetched += itemstats[i].evicted_unfetched;
+            totals.evicted_uncompressed += itemstats[i].evicted_uncompressed;
             totals.crawler_reclaimed += itemstats[i].crawler_reclaimed;
             totals.crawler_items_checked += itemstats[i].crawler_items_checked;
             totals.lrutail_reflocked += itemstats[i].lrutail_reflocked;
@@ -844,6 +841,7 @@ void item_stats(ADD_STAT add_stats, void *c) {
                     break;
                 case COLD_LRU:
                     totals.hits_to_cold = thread_stats.lru_hits[i];
+                    totals.hits_penalized = thread_stats.lru_hits_penalized[i]; // CODE (3Q)
                     break;
                 case TEMP_LRU:
                     totals.hits_to_temp = thread_stats.lru_hits[i];
@@ -878,10 +876,8 @@ void item_stats(ADD_STAT add_stats, void *c) {
                             "%llu", (unsigned long long)totals.tailrepairs);
         APPEND_NUM_FMT_STAT(fmt, n, "reclaimed",
                             "%llu", (unsigned long long)totals.reclaimed);
-        APPEND_NUM_FMT_STAT(fmt, n, "expired_unfetched",
-                            "%llu", (unsigned long long)totals.expired_unfetched);
-        APPEND_NUM_FMT_STAT(fmt, n, "evicted_unfetched",
-                            "%llu", (unsigned long long)totals.evicted_unfetched);
+        APPEND_NUM_FMT_STAT(fmt, n, "evicted_uncompressed",
+                            "%llu", (unsigned long long)totals.evicted_uncompressed);
         APPEND_NUM_FMT_STAT(fmt, n, "crawler_reclaimed",
                             "%llu", (unsigned long long)totals.crawler_reclaimed);
         APPEND_NUM_FMT_STAT(fmt, n, "crawler_items_checked",
@@ -1167,9 +1163,6 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
         if ((search->exptime != 0 && search->exptime < current_time)
             || item_is_flushed(search)) {
             itemstats[id].reclaimed++;
-            if ((search->it_flags & ITEM_FETCHED) == 0) {
-                itemstats[id].expired_unfetched++;
-            }
             /* refcnt 2 -> 1 */
             do_item_unlink_nolock(search, hv);
             STORAGE_delete(ext_storage, search);
@@ -1200,9 +1193,11 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                             // if true, item has been moved to COLD
                             itemstats[id].moves_to_cold++;
                             // delete the old item
-                            do_item_remove(old_it); // // old_it->refcount 1 -> 0 -> item_free
+                            do_item_remove(old_it); // old_it->refcount 1 -> 0 -> item_free
                             // increase the refcount of the compressed item
                             refcount_incr(search);
+                            // update penalized items
+                            penalized_dirty_flags[search->slabs_clsid] = true;
                         }
                         else if (settings.no_compression) {
                             move_to_lru = COLD_LRU;
@@ -1212,6 +1207,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                         else {
                             do_item_unlink_nolock(search, hv);
                             itemstats[id].evicted++;
+                            itemstats[id].evicted_uncompressed++;
                             if (settings.slab_automove == 2) {
                                 slabs_reassign(settings.slab_rebal, -1, orig_id, SLABS_REASSIGN_ALLOW_EVICTIONS);
                             }
@@ -1252,9 +1248,6 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                     itemstats[id].evicted_time = current_time - search->time;
                     if (search->exptime != 0)
                         itemstats[id].evicted_nonzero++;
-                    if ((search->it_flags & ITEM_FETCHED) == 0) {
-                        itemstats[id].evicted_unfetched++;
-                    }
                     LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EVICTION, search);
                     STORAGE_delete(ext_storage, search);
                     do_item_unlink_nolock(search, hv);
@@ -1262,6 +1255,8 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                     if (settings.slab_automove == 2) {
                         slabs_reassign(settings.slab_rebal, -1, orig_id, SLABS_REASSIGN_ALLOW_EVICTIONS);
                     }
+                    // update penalized items
+                    penalized_dirty_flags[search->slabs_clsid] = true; // CODE (3Q)
                 } else if (flags & LRU_PULL_RETURN_ITEM) {
                     /* Keep a reference to this item and return it. */
                     ret_it->it = it;
@@ -1475,6 +1470,11 @@ static int lru_maintainer_juggle(const int slabs_clsid) {
         if (do_more == 0)
             break;
         did_moves++;
+        // BEGIN CODE (3Q)
+        if (penalized_dirty_flags[slabs_clsid | COLD_LRU]) {
+            mark_penalized(slabs_clsid | COLD_LRU);
+        }
+        // END CODE (3Q)
     }
     return did_moves;
 }
@@ -1848,6 +1848,7 @@ bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
 
     // 3. update new item values
     new_it->it_flags &= ~ITEM_LINKED;
+    new_it->it_flags |= ITEM_PENALIZED;
     new_it->refcount = 0;
     new_it->slabs_clsid = id;
     new_it->nbytes = new_nbytes;
@@ -1873,5 +1874,51 @@ bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
     *ptr = new_it;
 
     return true;
+}
+
+void* get_itemstats(void)
+{
+    return itemstats;
+}
+
+void set_penalized_dirty(int slabs_clsid)
+{
+    penalized_dirty_flags[slabs_clsid] = true;
+}
+
+static size_t average_item_size()
+{
+    unsigned int nitems = 0;
+    unsigned int lru_size = 0;
+    size_t total_size = 0;
+    for (int clsid = POWER_SMALLEST; clsid < MAX_NUMBER_OF_SLAB_CLASSES; ++clsid) {
+        pthread_mutex_lock(&lru_locks[clsid | WARM_LRU]);
+        lru_size = do_get_lru_size(clsid | WARM_LRU);
+        pthread_mutex_unlock(&lru_locks[clsid | WARM_LRU]);
+        nitems += lru_size;
+        total_size += lru_size * slabs_size(clsid);
+    }
+    return total_size / nitems;
+}
+
+static void mark_penalized(int slabs_clsid)
+{
+    assert(penalized_dirty_flags[slabs_clsid] == true);
+
+    item* it = heads[slabs_clsid];
+    int penalized_items = (settings.maxbytes * 
+                            (95 - settings.warm_lru_pct - settings.hot_lru_pct)) /
+                            (100 * average_item_size());
+    int rank = 0;
+    while (it != NULL) {
+        ++rank;
+        if (rank <= penalized_items) {
+            it->it_flags |= ITEM_PENALIZED;
+        }
+        else {
+            it->it_flags &= ~ITEM_PENALIZED;
+        }
+    }
+    penalized_dirty_flags[slabs_clsid] = false;
 }
 // END CODE (3Q)

@@ -65,6 +65,7 @@
 #include "3q_compressor.h"
 #include "3q_history_buffer.h"
 #include "3q_disk_storage.h"
+#include "3q_warm_cold_adjuster.h"
 // END CODE (3Q)
 
 /*
@@ -6025,6 +6026,7 @@ int main (int argc, char **argv) {
             fprintf(stderr, "[INFO] history buffer max memory usage : %ld Bytes\n", history_buffer_max_mem_usage());
         }
         settings.maxbytes -= history_buffer_max_mem_usage();
+        // start_warm_cold_adjuster_thread();
     }
     // END CODE (3Q)
     stats_init();
@@ -6306,6 +6308,8 @@ int main (int argc, char **argv) {
 
     if (stop_main_loop == GRACE_STOP) {
         stop_threads();
+        stop_warm_cold_adjuster_thread();
+        
         if (settings.memory_file != NULL) {
             restart_mmap_close();
         }

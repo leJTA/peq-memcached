@@ -895,6 +895,7 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
         if (settings.verbose >= 2) {
             fprintf(stderr, "[DEBUG] item decompressed and moved to slabs class %d\n", it->slabs_clsid);
         }
+        set_penalized_dirty(it->slabs_clsid);
     }
     // END CODE (3Q)
     
@@ -1015,6 +1016,7 @@ void threadlocal_stats_reset(void) {
                 sizeof(threads[ii].stats.slab_stats));
         memset(&threads[ii].stats.lru_hits, 0,
                 sizeof(uint64_t) * POWER_LARGEST);
+        memset(&threads[ii].stats.lru_hits_penalized, 0, sizeof(uint64_t) * POWER_LARGEST); // CODE (3Q)
 
         pthread_mutex_unlock(&threads[ii].stats.mutex);
     }
@@ -1050,6 +1052,7 @@ void threadlocal_stats_aggregate(struct thread_stats *stats) {
         for (sid = 0; sid < POWER_LARGEST; sid++) {
             stats->lru_hits[sid] +=
                 threads[ii].stats.lru_hits[sid];
+            stats->lru_hits_penalized[sid] += threads[ii].stats.lru_hits_penalized[sid]; // CODE (3Q)
             stats->slab_stats[CLEAR_LRU(sid)].get_hits +=
                 threads[ii].stats.lru_hits[sid];
         }
