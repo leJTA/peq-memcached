@@ -1724,6 +1724,14 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
         }
 
         if (do_store) {
+            // BEGIN CODE (3Q)
+            // if an item is in the history buffer, it is inserted directly in the warm buffer
+            history_buffer_lock();
+            if (history_buffer_remove(ITEM_key(it), it->nkey) != NULL) {
+                it->slabs_clsid |= WARM_LRU;
+            }
+            history_buffer_unlock();
+            // END CODE (3Q)
             do_item_link(it, hv, cas_in);
             stored = STORED;
         }
@@ -6026,7 +6034,7 @@ int main (int argc, char **argv) {
             fprintf(stderr, "[INFO] history buffer max memory usage : %ld Bytes\n", history_buffer_max_mem_usage());
         }
         settings.maxbytes -= history_buffer_max_mem_usage();
-        // start_warm_cold_adjuster_thread();
+        start_warm_cold_adjuster_thread(NULL);
     }
     // END CODE (3Q)
     stats_init();

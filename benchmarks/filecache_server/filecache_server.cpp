@@ -9,7 +9,7 @@
 #include <thread>
 #include <vector>
 
-const std::string DATA_DIR = "/tmp/3q-items-data";
+std::string data_dir = "/tmp/3q-items-data";
 const int NUM_THREADS = 4;
 
 struct Memc {
@@ -50,8 +50,12 @@ std::string get_xxhash_prefix(const std::string& key)
 	return hash_hex.substr(0, 2);
 }
 
-int main()
+int main(int argc, char* argv[])
 {
+	if (argc > 1) {
+		data_dir = argv[1];
+	}
+
 	// Register signal handler
 	std::signal(SIGINT, handle_signal);
 	std::signal(SIGTERM, handle_signal);
@@ -77,7 +81,7 @@ int main()
 		}
 
 		// Read file from disk
-		std::ifstream file(DATA_DIR + "/" + get_xxhash_prefix(key) + "/" + key, std::ios::binary);
+		std::ifstream file(data_dir + "/" + get_xxhash_prefix(key) + "/" + key, std::ios::binary);
 		if (!file) {
 			res.status = 404;
 			return;

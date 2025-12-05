@@ -891,11 +891,18 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
     if (it && !settings.no_compression && ITEM_lruid(it) == COLD_LRU && do_decompress_item(&it)) {
         assert(old_it->refcount == 1);
         refcount_incr(it);
-        do_item_remove(old_it);
         if (settings.verbose >= 2) {
             fprintf(stderr, "[DEBUG] item decompressed and moved to slabs class %d\n", it->slabs_clsid);
         }
-        set_penalized_dirty(it->slabs_clsid);
+        
+        // stats update
+        t->stats.lru_hits[old_it->slabs_clsid]++;
+        if (old_it->it_flags & ITEM_PENALIZED) {
+            t->stats.lru_hits_penalized[old_it->slabs_clsid]++;
+        }
+        set_penalized_dirty(old_it->slabs_clsid);
+
+        do_item_remove(old_it);
     }
     // END CODE (3Q)
     

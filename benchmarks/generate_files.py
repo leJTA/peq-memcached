@@ -12,15 +12,12 @@ Usage:
 import os
 import argparse
 import random
-import string
 import xxhash
 
 
 def generate_payload(size_bytes):
     """Generate a pseudo-random byte sequence of size size_bytes."""
-    base = "".join(
-        random.choices(string.ascii_letters + string.digits, k=128 * 1024)
-    ).encode("ascii")
+    base = random.randbytes(90 * 1024)
     reps = (size_bytes // len(base)) + 1
     return (base * reps)[:size_bytes]
 
@@ -52,7 +49,7 @@ def main():
     )
 
     for i in range(args.num_items):
-        key = f"key_{i:06d}"
+        key = f"key_{i:09d}"
         subdir = os.path.join(args.output_dir, get_xxhash_prefix(key))
         if not os.path.exists(subdir):
             os.makedirs(subdir)

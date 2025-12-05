@@ -641,11 +641,6 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                     c->thread->stats.slab_stats[ITEM_clsid(it)].touch_hits++;
                 } else {
                     c->thread->stats.lru_hits[it->slabs_clsid]++;
-                    // BEGIN CODE (3Q)
-                    if (it->it_flags & ITEM_PENALIZED) {
-                        c->thread->stats.lru_hits_penalized[it->slabs_clsid]++;
-                    }
-                    // BEGIN CODE (3Q)
                     c->thread->stats.get_cmds++;
                 }
                 pthread_mutex_unlock(&c->thread->stats.mutex);

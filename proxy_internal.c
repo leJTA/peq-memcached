@@ -280,11 +280,6 @@ static void process_get_cmd(LIBEVENT_THREAD *t, mcp_parser_t *pr, mc_resp *resp,
             t->stats.slab_stats[ITEM_clsid(it)].touch_hits++;
         } else {
             t->stats.lru_hits[it->slabs_clsid]++;
-            // BEGIN CODE (3Q)
-            if (it->it_flags & ITEM_PENALIZED) {
-                c->thread->stats.lru_hits_penalized[it->slabs_clsid]++;
-            }
-            // BEGIN CODE (3Q)
             t->stats.get_cmds++;
         }
         pthread_mutex_unlock(&t->stats.mutex);
