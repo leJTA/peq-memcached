@@ -1,13 +1,14 @@
 #include "3q_warm_cold_adjuster.h"
 #include "memcached.h"
+#include "3q_compressor.h"
 
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
 
+// #define DECOMP_BW_ZSTD 1342177  // 1342177 B/ms <=> 1.2 GB/s (Zstd avg decomp Bandwidth)
+// #define DECOMP_BW_LZ4 3758096 // 3758096 B/ms <=> 3.5 GB/s (LZ4 avg decomp Bandwidth)
 
-#define DISK_LATENCY_NS 150000  // 150'000 ns
-#define DECOMP_LATENCY_NS 1000      // 1000 ns
-#define RAM_LATENCY_NS 70           // 70ns
 #define MIN_WARM_LRU_PCT 10
 #define MAX_WARM_LRU_PCT 75
 #define STEP_PCT 5                  // Adjustments are made by increments/decrements of 5%.
@@ -17,8 +18,6 @@
 static volatile int do_run_warm_cold_adjuster = 0;
 static pthread_mutex_t warm_cold_adjuster_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_t warm_cold_adjuster_tid;
-
-static unsigned int lru_type_map[4] = {HOT_LRU, WARM_LRU, COLD_LRU, TEMP_LRU};
 
 typedef struct {
    uint64_t evicted;
@@ -44,52 +43,52 @@ typedef struct {
    rel_time_t evicted_time;
 } itemstats_t;
 
-itemstats_t _stats_prev;
-itemstats_t _stats_curr;
-uint64_t _penalized_hits;
-uint64_t _avoided_misses;
-uint64_t _penalized_items;
-double _G_previous = 0;
-double _G_current = 0;
+static const double disk_bw = 805306.368;    // 805306 B/ms <=> 0.75 GB/s (SATA SSD 6 Gbps)
+static const double ram_bw = 91268055.312;   // 91268055 B/ms <=> 85 GB/s (DDR4 2666MHz dual channel)
 
-static void retrieve_stats()
+static itemstats_t _stats_prev;
+static itemstats_t _stats_curr;
+static uint64_t _penalized_hits;
+static uint64_t _avoided_misses;
+static double _acceptance_rate = 0;
+static double _G_prev = 0;
+static double _G_curr = 0;
+
+static void retrieve_stats(itemstats_t* stats)
 {
-   _stats_prev = _stats_curr;
    itemstats_t* itemstats = get_itemstats();
-   int n;
-   for (n = 0; n < MAX_NUMBER_OF_SLAB_CLASSES; n++) {
-      int x;
-      int i;
-      for (x = 0; x < 4; x++) {
-         i = n | lru_type_map[x];
-         pthread_mutex_lock(&lru_locks[i]);
-         _stats_curr.evicted += itemstats[i].evicted;
-         _stats_curr.reclaimed += itemstats[i].reclaimed;
-         _stats_curr.evicted_uncompressed += itemstats[i].evicted_uncompressed;
-         _stats_curr.crawler_reclaimed += itemstats[i].crawler_reclaimed;
-         _stats_curr.crawler_items_checked += itemstats[i].crawler_items_checked;
-         _stats_curr.lrutail_reflocked += itemstats[i].lrutail_reflocked;
-         _stats_curr.moves_to_cold += itemstats[i].moves_to_cold;
-         _stats_curr.moves_to_warm += itemstats[i].moves_to_warm;
-         _stats_curr.moves_within_lru += itemstats[i].moves_within_lru;
-         _stats_curr.direct_reclaims += itemstats[i].direct_reclaims;
-         pthread_mutex_unlock(&lru_locks[i]);
-      }
+   struct thread_stats thread_stats;
+   threadlocal_stats_aggregate(&thread_stats);
+   memset(stats, 0, sizeof(itemstats_t));
+   for (int n = 0; n < MAX_NUMBER_OF_SLAB_CLASSES; n++) {
+      int i = n | COLD_LRU;
+      int j = n | WARM_LRU;   // for moves_to_cold
+      pthread_mutex_lock(&lru_locks[i]);
+      stats->evicted += itemstats[i].evicted;
+      stats->evicted_uncompressed += itemstats[i].evicted_uncompressed;
+      stats->moves_to_cold += itemstats[j].moves_to_cold;      // !!
+      stats->hits_penalized += thread_stats.lru_hits_penalized[i];
+      stats->hits_to_cold += thread_stats.lru_hits[i];
+      pthread_mutex_unlock(&lru_locks[i]);
    }
 }
 
 static double G()
 {
-   // alpha = compressed to cold / total evicted from warm
-   double acceptance_rate = (double)(_stats_curr.moves_to_cold - _stats_prev.moves_to_cold) / 
+   // tau = compressed to cold / total evicted from warm
+   _acceptance_rate = (double)(_stats_curr.moves_to_cold - _stats_prev.moves_to_cold) /
                             ((_stats_curr.evicted_uncompressed - _stats_prev.evicted_uncompressed) + 
                              (_stats_curr.moves_to_cold - _stats_prev.moves_to_cold));
    _penalized_hits = _stats_curr.hits_penalized - _stats_prev.hits_penalized;
 	_avoided_misses = (_stats_curr.hits_to_cold - _stats_prev.hits_to_cold) -
 							(_stats_curr.hits_penalized - _stats_prev.hits_penalized);
 
-	return acceptance_rate * _avoided_misses * (DISK_LATENCY_NS - DECOMP_LATENCY_NS) -
-			 _penalized_hits * (DECOMP_LATENCY_NS - RAM_LATENCY_NS);
+   double decomp_bw = get_decompression_bw();
+   size_t d = get_average_size(); 
+   fprintf(stderr, "[DEBUG] penalized hits = %ld, avoided_misses = %ld, decomp_bw = %f (GB/s)\n", _penalized_hits, _avoided_misses, (decomp_bw / 1073741.824));
+   // fprintf(stderr, "[DEBUG] size = %ld, tau = %f\n", d, _acceptance_rate);
+	return _avoided_misses * (d / disk_bw - d / decomp_bw) -
+			 _penalized_hits * (d / decomp_bw - d / ram_bw) / _acceptance_rate;
 }
 
 static void increase_cold_buffer_size()
@@ -117,17 +116,21 @@ static void* warm_cold_adjuster_thread()
       usleep(to_sleep * 1000);
       pthread_mutex_lock(&warm_cold_adjuster_lock);
       
-      retrieve_stats();
-      _G_previous = _G_current;
-      _G_current = G();
-      double delta = (_G_current - _G_previous) / _G_previous;
+      _stats_prev = _stats_curr;
+      _G_prev = _G_curr;
+      retrieve_stats(&_stats_curr);
+      _G_curr = G();
+      double delta = (_G_curr - _G_prev) / fabs(_G_prev);
 
-      if (delta > THRESHOLD) {
-         increase_cold_buffer_size();
-      }
-      else if (delta < -THRESHOLD) {
+      if (delta < -THRESHOLD || _G_curr < 0) {
          decrease_cold_buffer_size();
       }
+      else if (delta > THRESHOLD) {
+         increase_cold_buffer_size();
+      }
+
+      // fprintf(stderr, "%.1f,%.1f,%.2f,%d\n", _G_curr, _G_prev, delta, settings.warm_lru_pct);
+      fprintf(stderr, "[DEBUG] G_curr = %.3f, G_prev = %.3f, delta = %.3f, cold_pct = %d\n", _G_curr, _G_prev, delta, 100 - settings.hot_lru_pct - settings.warm_lru_pct);
    }
 
    return NULL;
@@ -159,7 +162,7 @@ int stop_warm_cold_adjuster_thread(void)
    do_run_warm_cold_adjuster = 0;
    pthread_mutex_unlock(&warm_cold_adjuster_lock);
    if ((ret = pthread_join(warm_cold_adjuster_tid, NULL)) != 0) {
-      fprintf(stderr, "Failed to stop LRU maintainer thread: %s\n", strerror(ret));
+      fprintf(stderr, "Failed to stop WARM-COLD maintainer thread: %s\n", strerror(ret));
       return -1;
    }
    return 0;

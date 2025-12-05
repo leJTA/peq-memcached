@@ -977,32 +977,32 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
     item *it = assoc_find(key, nkey, hv);
 
     // BEGIN CODE (3Q)
-    if (it == NULL) {
-        history_buffer_lock();
-        history_item* hi = history_buffer_remove(key, nkey);
-        history_buffer_unlock();
+    // if (it == NULL) {
+    //     history_buffer_lock();
+    //     history_item* hi = history_buffer_remove(key, nkey);
+    //     history_buffer_unlock();
 
-        if (hi != NULL) {
-            it = do_item_alloc(key, nkey, 0, hi->exptime, hi->nbytes);
+    //     if (hi != NULL) {
+    //         it = do_item_alloc(key, nkey, 0, hi->exptime, hi->nbytes);
             
-            if (it != NULL) {
-                it->refcount = 0;
-                it->it_flags = hi->it_flags;
-                it->slabs_clsid = hi->slabs_clsid;
+    //         if (it != NULL) {
+    //             it->refcount = 0;
+    //             it->it_flags = hi->it_flags;
+    //             it->slabs_clsid = hi->slabs_clsid;
                 
-                size_t nbytes = disk_storage_read(ITEM_data(it), it->nbytes, key, nkey);
-                memcpy(ITEM_data(it) + nbytes, "\r\n", 2);
+    //             size_t nbytes = disk_storage_read(ITEM_data(it), it->nbytes, key, nkey);
+    //             memcpy(ITEM_data(it) + nbytes, "\r\n", 2);
 
-                assert(ITEM_clsid(it) == hi->slabs_clsid);
-                assert(it->nbytes == nbytes + 2);
+    //             assert(ITEM_clsid(it) == hi->slabs_clsid);
+    //             assert(it->nbytes == nbytes + 2);
 
-                it->slabs_clsid |= WARM_LRU;
-                uint32_t hv = hash(key, nkey);
-                do_item_link(it, hv, ITEM_get_cas(it));
-            }
-            destroy_history_item(hi);
-        }
-    }
+    //             it->slabs_clsid |= WARM_LRU;
+    //             uint32_t hv = hash(key, nkey);
+    //             do_item_link(it, hv, ITEM_get_cas(it));
+    //         }
+    //         destroy_history_item(hi);
+    //     }
+    // }
     // END CODE (3Q)
 
     if (it != NULL) {
@@ -1196,7 +1196,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                             do_item_remove(old_it); // old_it->refcount 1 -> 0 -> item_free
                             // increase the refcount of the compressed item
                             refcount_incr(search);
-                            // update penalized items
+                            // the penalized items should be updated afterwardS
                             penalized_dirty_flags[search->slabs_clsid] = true;
                         }
                         else if (settings.no_compression) {
@@ -1467,14 +1467,14 @@ static int lru_maintainer_juggle(const int slabs_clsid) {
         if (settings.lru_segmented) {
             do_more += lru_pull_tail(slabs_clsid, COLD_LRU, total_bytes, LRU_PULL_CRAWL_BLOCKS, 0, NULL);
         }
-        if (do_more == 0)
-            break;
-        did_moves++;
         // BEGIN CODE (3Q)
         if (penalized_dirty_flags[slabs_clsid | COLD_LRU]) {
             mark_penalized(slabs_clsid | COLD_LRU);
         }
         // END CODE (3Q)
+        if (do_more == 0)
+            break;
+        did_moves++;
     }
     return did_moves;
 }
@@ -1848,7 +1848,6 @@ bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
 
     // 3. update new item values
     new_it->it_flags &= ~ITEM_LINKED;
-    new_it->it_flags |= ITEM_PENALIZED;
     new_it->refcount = 0;
     new_it->slabs_clsid = id;
     new_it->nbytes = new_nbytes;
@@ -1860,12 +1859,14 @@ bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
     if (new_it->nbytes < old_it->nbytes) {
         // compression, move to COLD
         new_it->slabs_clsid |= COLD_LRU;
+        new_it->it_flags |= ITEM_PENALIZED;
         do_item_unlink_nolock(old_it, hv);  // WARM LRU is already locked from lru_pull_tail
         do_item_link(new_it, hv, ITEM_get_cas(old_it)); // COLD LRU is not locked
     }
     else {
         // decompression, move to HOT
         new_it->slabs_clsid |= HOT_LRU;
+        new_it->it_flags &= ~ITEM_PENALIZED;
         do_item_unlink(old_it, hv);
         do_item_link(new_it, hv, ITEM_get_cas(old_it));
     }
@@ -1904,20 +1905,20 @@ static size_t average_item_size()
 static void mark_penalized(int slabs_clsid)
 {
     assert(penalized_dirty_flags[slabs_clsid] == true);
-
     item* it = heads[slabs_clsid];
-    int penalized_items = (settings.maxbytes * 
+    int penalized_count = (settings.maxbytes * 
                             (95 - settings.warm_lru_pct - settings.hot_lru_pct)) /
                             (100 * average_item_size());
     int rank = 0;
     while (it != NULL) {
         ++rank;
-        if (rank <= penalized_items) {
+        if (rank <= penalized_count) {
             it->it_flags |= ITEM_PENALIZED;
         }
         else {
             it->it_flags &= ~ITEM_PENALIZED;
         }
+        it = it->next;
     }
     penalized_dirty_flags[slabs_clsid] = false;
 }

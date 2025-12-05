@@ -31,15 +31,19 @@ def percentile(data, p):
 
 
 def latency_stats(data):
-    """Compute mean, P50, P95, P99 latency statistics."""
+    """Compute mean, P50, P25, P75, min, max latency statistics."""
     if not data:
-        return (0, 0, 0, 0)
+        return (0, 0, 0, 0, 0, 0)
+
     data_sorted = sorted(data)
     mean = statistics.mean(data_sorted)
     p50 = percentile(data_sorted, 50)
-    p95 = percentile(data_sorted, 95)
-    p99 = percentile(data_sorted, 99)
-    return (mean, p50, p95, p99)
+    p25 = percentile(data_sorted, 25)
+    p75 = percentile(data_sorted, 75)
+    min_v = data_sorted[0]
+    max_v = data_sorted[-1]
+
+    return (mean, p50, p25, p75, min_v, max_v)
 
 
 def precompute_indices(n_items, n_ops, a):
@@ -91,7 +95,7 @@ async def main_async(args):
 
     # Generate keys
     print("Generating keys...")
-    keys = [f"key_{i:06d}" for i in range(num_items)]
+    keys = [f"key_{i:09d}" for i in range(num_items)]
     access_indices = precompute_indices(num_items, total_ops, args.skewness)
 
     # Split indices across threads
@@ -123,7 +127,7 @@ async def main_async(args):
     total_errors = sum(r["errors"] for r in results)
     all_latencies = [lat for r in results for lat in r["latencies"]]
 
-    mean, p50, p95, p99 = latency_stats(all_latencies)
+    mean, p50, p25, p75, min_v, max_v = latency_stats(all_latencies)
 
     print("\n--- Summary ---")
     print(f"Duration (s)           : {elapsed:.3f}")
@@ -131,11 +135,13 @@ async def main_async(args):
     print(f"  Successes            : {total_ok}")
     print(f"  Errors               : {total_errors}")
     print(f"Average throughput     : {(total_ok + total_errors) / elapsed:.1f} req/s\n")
-    print("Latencies (ms):")
+    print("response times (ms):")
     print(f"  Mean   : {mean:.3f}")
-    print(f"  P50    : {p50:.3f}")
-    print(f"  P95    : {p95:.3f}")
-    print(f"  P99    : {p99:.3f}")
+    print(f"  median : {p50:.3f}")
+    print(f"  P25    : {p25:.3f}")
+    print(f"  P75    : {p75:.3f}")
+    print(f"  min    : {min_v:.3f}")
+    print(f"  max    : {max_v:.3f}")
     print("")
 
 
