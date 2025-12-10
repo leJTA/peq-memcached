@@ -3,10 +3,10 @@
 generate_files.py
 -----------------
 Generates a set of binary files containing random data.
-By default: 1000 files of 256 KiB each, named key_0000, key_0001, etc.
+By default: 10000 files of 4 KiB each, named key_0000, key_0001, etc.
 
 Usage:
-    python generate_files.py --output-dir data --num-items 1000 --item-size-kib 256
+    python generate_files.py --output-dir data --num-items 10000 --item-size-kib 4
 """
 
 import os
@@ -17,7 +17,7 @@ import xxhash
 
 def generate_payload(size_bytes):
     """Generate a pseudo-random byte sequence of size size_bytes."""
-    base = random.randbytes(90 * 1024)
+    base = random.randbytes(1408)
     reps = (size_bytes // len(base)) + 1
     return (base * reps)[:size_bytes]
 
@@ -32,10 +32,10 @@ def main():
     )
     parser.add_argument("-o", "--output-dir", default="data", help="Output directory")
     parser.add_argument(
-        "-n", "--num-items", type=int, default=1000, help="Number of files to generate"
+        "-n", "--num-items", type=int, default=10000, help="Number of files to generate"
     )
     parser.add_argument(
-        "-k", "--item-size-kib", type=int, default=256, help="Size of each file in KiB"
+        "-k", "--item-size-kib", type=int, default=4, help="Size of each file in KiB"
     )
     parser.add_argument("-s", "--seed", type=int, default=0, help="Random seed (optional)")
     args = parser.parse_args()
