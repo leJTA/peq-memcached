@@ -6,9 +6,6 @@
 #include <string.h>
 #include <math.h>
 
-// #define DECOMP_BW_ZSTD 1342177  // 1342177 B/ms <=> 1.2 GB/s (Zstd avg decomp Bandwidth)
-// #define DECOMP_BW_LZ4 3758096 // 3758096 B/ms <=> 3.5 GB/s (LZ4 avg decomp Bandwidth)
-
 #define MIN_WARM_LRU_PCT 10
 #define MAX_WARM_LRU_PCT 75
 #define STEP_PCT 5                  // Adjustments are made by increments/decrements of 5%.
@@ -43,8 +40,8 @@ typedef struct {
    rel_time_t evicted_time;
 } itemstats_t;
 
-static const double disk_bw = 805306.368;    // 805306 B/ms <=> 0.75 GB/s (SATA SSD 6 Gbps)
-static const double ram_bw = 91268055.312;   // 91268055 B/ms <=> 85 GB/s (DDR4 2666MHz dual channel)
+static const double disk_bw = 805306.368;    // B/ms <=> 0.75 GB/s (SATA SSD 6 Gbps through NFS + Omnipath)
+static const double ram_bw = 19327352.832;   // B/ms <=> 18 GB/s (DDR4 2666MHz dual channel with sysbench)
 
 static itemstats_t _stats_prev;
 static itemstats_t _stats_curr;
