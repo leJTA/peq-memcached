@@ -31,7 +31,7 @@ static int _pos;
 static double _times[NVAL];
 static size_t _sizes[NVAL];
 
-void compression_resources_init(int nres)
+void compression_resources_init(void)
 {
 	// +1 for the LRU maintainer thread
 	_num_threads = settings.num_threads + 1;

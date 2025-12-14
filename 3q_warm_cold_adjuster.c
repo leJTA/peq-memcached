@@ -40,8 +40,8 @@ typedef struct {
    rel_time_t evicted_time;
 } itemstats_t;
 
-static const double disk_bw = 805306.368;    // B/ms <=> 0.75 GB/s (SATA SSD 6 Gbps through NFS + Omnipath)
-static const double ram_bw = 19327352.832;   // B/ms <=> 18 GB/s (DDR4 2666MHz dual channel with sysbench)
+static const double disk_bw = 429916.16;    // B/ms <=> 410 MB/s (SATA SSD 6 Gbps random read 256KB)
+static const double ram_bw = 19864223.744;   // B/ms <=> 18.5 GB/s (DDR4 2666MHz random read 256KB)
 
 static itemstats_t _stats_prev;
 static itemstats_t _stats_curr;

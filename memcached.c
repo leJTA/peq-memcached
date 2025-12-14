@@ -6020,7 +6020,7 @@ int main (int argc, char **argv) {
     // BEGIN CODE (3Q)
     {
         disk_storage_init(NULL);
-        compression_resources_init(settings.num_threads + 1); // +1 for the LRU maintainer thread
+        compression_resources_init(); // +1 for the LRU maintainer thread
         // history should hold identifier for as many pages as would fit on 50% of the cache (Johnson and Shasha, 1994).
         bool success = history_buffer_init(settings.hist_buffer_capacity > 0 
                                           ? settings.hist_buffer_capacity 

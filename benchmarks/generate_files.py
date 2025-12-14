@@ -15,13 +15,6 @@ import random
 import xxhash
 
 
-def generate_payload(size_bytes):
-    """Generate a pseudo-random byte sequence of size size_bytes."""
-    base = random.randbytes(1408)
-    reps = (size_bytes // len(base)) + 1
-    return (base * reps)[:size_bytes]
-
-
 def get_xxhash_prefix(key):
     return xxhash.xxh64(key).hexdigest()[:2].upper()
 
@@ -35,7 +28,7 @@ def main():
         "-n", "--num-items", type=int, default=10000, help="Number of files to generate"
     )
     parser.add_argument(
-        "-k", "--item-size-kib", type=int, default=4, help="Size of each file in KiB"
+        "-k", "--item-size-kib", type=int, default=256, help="Size of each file in KiB"
     )
     parser.add_argument("-s", "--seed", type=int, default=0, help="Random seed (optional)")
     args = parser.parse_args()
@@ -48,13 +41,20 @@ def main():
         f"Generating {args.num_items} files of {args.item_size_kib} KiB in '{args.output_dir}'..."
     )
 
+    # Read template file
+    payload = bytes()
+    with open('mr.part.01', 'rb') as f:
+        payload = f.read(size_bytes)
+        if not payload:
+            print(f"Error reading data template file")
+            exit()
+
     for i in range(args.num_items):
         key = f"key_{i:09d}"
         subdir = os.path.join(args.output_dir, get_xxhash_prefix(key))
         if not os.path.exists(subdir):
             os.makedirs(subdir)
         filepath = os.path.join(subdir, key)
-        payload = generate_payload(size_bytes)
         with open(filepath, "wb") as f:
             f.write(payload)
 
