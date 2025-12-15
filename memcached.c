@@ -255,7 +255,7 @@ static void settings_init(void) {
     settings.lru_maintainer_thread = false;
     settings.lru_segmented = true;
     settings.hot_lru_pct = 20;
-    settings.warm_lru_pct = 40;
+    settings.warm_lru_pct = 70;
     settings.hot_max_factor = 0.2;
     settings.warm_max_factor = 2.0;
     settings.temp_lru = false;
