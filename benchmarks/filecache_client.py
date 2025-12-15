@@ -143,6 +143,7 @@ async def main_async(args):
     print(f"  min    : {min_v:.3f}")
     print(f"  max    : {max_v:.3f}")
     print("")
+    print(f"csv : {min_v:.3f},{p25:.3f},{p50:.3f},{p75:.3f},{max_v:.3f},{mean:.3f}")
 
 
 def main():

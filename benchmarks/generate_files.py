@@ -43,7 +43,7 @@ def main():
 
     # Read template file
     payload = bytes()
-    with open('mr.part.01', 'rb') as f:
+    with open('webster.part.05', 'rb') as f:
         payload = f.read(size_bytes)
         if not payload:
             print(f"Error reading data template file")
@@ -57,6 +57,8 @@ def main():
         filepath = os.path.join(subdir, key)
         with open(filepath, "wb") as f:
             f.write(payload)
+        if i % (args.num_items // 100) == 0:
+            print(f"{round(100 * i / args.num_items)}%")
 
     total_mb = args.num_items * size_bytes / (1024 * 1024)
     print(f"Done. {args.num_items} files written ({total_mb:.2f} MiB total).")

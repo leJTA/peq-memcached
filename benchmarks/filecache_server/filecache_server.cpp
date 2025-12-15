@@ -11,7 +11,7 @@
 #include <future>
 
 std::string data_dir = "/tmp/3q-items-data";
-const int NUM_THREADS = 4;
+const int NUM_THREADS = 8;
 
 struct Memc {
 	memcached_st* memc;
