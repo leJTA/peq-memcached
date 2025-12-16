@@ -574,6 +574,15 @@ void do_item_update(item *it) {
                 item_unlink_q(it);
                 item_link_q(it);
             }
+            else if (ITEM_lruid(it) == COLD_LRU) {
+                if (settings.no_compression) {  // For 2Q policy
+                    it->time = current_time;
+                    item_unlink_q(it);
+                    it->slabs_clsid &= ~COLD_LRU;
+                    it->slabs_clsid |= WARM_LRU;
+                    item_link_q(it);
+                }
+            }
             // END CODE EDIT (3Q)
             else {
                 it->time = current_time;
