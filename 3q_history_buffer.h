@@ -6,15 +6,7 @@
 #include <stdint.h>
 
 typedef unsigned int rel_time_t;
-typedef struct history_item {
-	char* key;
-	rel_time_t exptime;
-	int nbytes;
-	uint16_t it_flags;
-	uint8_t slabs_clsid;
-	uint8_t nkey;
-	struct history_item* next;
-} history_item;
+typedef struct history_item history_item;
 
 // Creators
 bool history_buffer_init(size_t capacity);
@@ -22,8 +14,7 @@ void history_buffer_cleanup(void);
 void destroy_history_item(history_item* hi);
 
 // Manipulators
-void history_buffer_enqueue(const char* key, uint8_t nkey, rel_time_t exptime, int nbytes,
-									 uint16_t it_flags, uint8_t slabs_clsid);
+void history_buffer_enqueue(const char* key, uint8_t nkey);
 void history_buffer_dequeue(void);
 history_item* history_buffer_remove(const char* key, uint8_t nkey);
 void history_buffer_lock(void);

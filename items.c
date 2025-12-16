@@ -1225,10 +1225,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                     else {
                         history_buffer_lock();
                         assert(!history_buffer_contains(ITEM_key(search), search->nkey));
-                        history_buffer_enqueue(ITEM_key(search), search->nkey, search->exptime, 
-                                               search->nbytes, search->it_flags & ~ITEM_LINKED, // item will be unlinked
-                                               search->slabs_clsid
-                                            );
+                        history_buffer_enqueue(ITEM_key(search), search->nkey);
                         history_buffer_unlock();
                         itemstats[id].moves_to_history_buffer++;
                         do_item_unlink_nolock(search, hv);
