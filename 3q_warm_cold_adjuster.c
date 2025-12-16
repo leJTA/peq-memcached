@@ -8,7 +8,7 @@
 
 #define MIN_WARM_LRU_PCT 10
 #define MAX_WARM_LRU_PCT 75
-#define STEP_PCT 5                  // Adjustments are made by increments/decrements of 5%.
+#define STEP_PCT 1                  // Adjustments are made by increments/decrements of 1%.
 #define THRESHOLD 0.05              // 5%
 #define WARM_COLD_ADJUSTER_SLEEP_MS 1000  // 1000 ms
 
