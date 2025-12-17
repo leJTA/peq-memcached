@@ -1913,7 +1913,7 @@ static void mark_penalized(int slabs_clsid)
     assert(penalized_dirty_flags[slabs_clsid] == true);
     item* it = heads[slabs_clsid];
     int penalized_count = (settings.maxbytes * 
-                            (95 - settings.warm_lru_pct - settings.hot_lru_pct)) /
+                            (99 - settings.warm_lru_pct - settings.hot_lru_pct)) /
                             (100 * average_item_size());
     int rank = 0;
     while (it != NULL) {
