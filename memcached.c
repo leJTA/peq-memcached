@@ -5693,6 +5693,7 @@ int main (int argc, char **argv) {
                 break;
             case NO_COMPRESSION:
                 settings.no_compression = true;
+                settings.warm_lru_pct = 80; // no cold lru anymore
                 break;
             default:
             // END CODE (3Q)

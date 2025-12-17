@@ -574,15 +574,6 @@ void do_item_update(item *it) {
                 item_unlink_q(it);
                 item_link_q(it);
             }
-            else if (ITEM_lruid(it) == COLD_LRU) {
-                if (settings.no_compression) {  // For 2Q policy
-                    it->time = current_time;
-                    item_unlink_q(it);
-                    it->slabs_clsid &= ~COLD_LRU;
-                    it->slabs_clsid |= WARM_LRU;
-                    item_link_q(it);
-                }
-            }
             // END CODE EDIT (3Q)
             else {
                 it->time = current_time;
@@ -1207,11 +1198,6 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                             refcount_incr(search);
                             // the penalized items should be updated afterwardS
                             penalized_dirty_flags[search->slabs_clsid] = true;
-                        }
-                        else if (settings.no_compression) {
-                            move_to_lru = COLD_LRU;
-                            itemstats[id].moves_to_cold++;
-                            do_item_unlink_q(search);
                         }
                         else {
                             do_item_unlink_nolock(search, hv);
