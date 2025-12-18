@@ -39,6 +39,7 @@ void *item_lru_bump_buf_create(void);
 bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal);
 void set_penalized_dirty(int slabs_clsid);
 void* get_itemstats(void);
+int cold_lru_page_count(void);
 // END CODE (3Q)
 
 #define LRU_PULL_EVICT 1

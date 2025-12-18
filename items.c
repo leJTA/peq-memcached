@@ -1896,11 +1896,24 @@ static size_t average_item_size()
     return total_size / nitems;
 }
 
+int cold_lru_page_count()
+{
+    int page_count = 0;
+    for (int clsid = POWER_SMALLEST; clsid < MAX_NUMBER_OF_SLAB_CLASSES; ++clsid) {
+        pthread_mutex_lock(&lru_locks[clsid | COLD_LRU]);
+        if (heads[clsid | COLD_LRU] != NULL) {
+            page_count += slabs_page_count(clsid);
+        }
+        pthread_mutex_unlock(&lru_locks[clsid | COLD_LRU]);
+    }
+    return page_count;
+}
+
 static void mark_penalized(int slabs_clsid) // COLD_LRU locked here
 {
     assert(penalized_dirty_flags[slabs_clsid] == true);
     item* it = heads[slabs_clsid];
-    int penalized_count = (slabs_page_count(slabs_clsid) * 1024 * 1024) / average_item_size();
+    int penalized_count = (slabs_page_count(ITEM_clsid(it)) * 1024 * 1024) / average_item_size();
     int rank = 0;
     while (it != NULL) {
         ++rank;
