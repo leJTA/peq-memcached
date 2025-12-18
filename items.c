@@ -1461,7 +1461,9 @@ static int lru_maintainer_juggle(const int slabs_clsid) {
         }
         // BEGIN CODE (3Q)
         if (penalized_dirty_flags[slabs_clsid | COLD_LRU]) {
+            pthread_mutex_lock(&lru_locks[slabs_clsid | COLD_LRU]);
             mark_penalized(slabs_clsid | COLD_LRU);
+            pthread_mutex_unlock(&lru_locks[slabs_clsid | COLD_LRU]);
         }
         // END CODE (3Q)
         if (do_more == 0)
@@ -1856,8 +1858,8 @@ bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
         do_item_link(new_it, hv, ITEM_get_cas(old_it)); // COLD LRU is not locked
     }
     else {
-        // decompression, move to HOT
-        new_it->slabs_clsid |= HOT_LRU;
+        // decompression, move back to WARM
+        new_it->slabs_clsid |= WARM_LRU;
         new_it->it_flags &= ~ITEM_PENALIZED;
         do_item_unlink(old_it, hv);
         do_item_link(new_it, hv, ITEM_get_cas(old_it));
@@ -1894,13 +1896,11 @@ static size_t average_item_size()
     return total_size / nitems;
 }
 
-static void mark_penalized(int slabs_clsid)
+static void mark_penalized(int slabs_clsid) // COLD_LRU locked here
 {
     assert(penalized_dirty_flags[slabs_clsid] == true);
     item* it = heads[slabs_clsid];
-    int penalized_count = (settings.maxbytes * 
-                            (99 - settings.warm_lru_pct - settings.hot_lru_pct)) /
-                            (100 * average_item_size());
+    int penalized_count = (slabs_page_count(slabs_clsid) * 1024 * 1024) / average_item_size();
     int rank = 0;
     while (it != NULL) {
         ++rank;
