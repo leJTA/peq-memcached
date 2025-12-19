@@ -90,7 +90,7 @@ static double G()
 
 static void increase_cold_buffer_size()
 {
-   size_t remain = (settings.maxbytes *
+   ssize_t remain = (settings.maxbytes *
                      (100 - settings.hot_lru_pct - settings.warm_lru_pct) / 100.0) -
                    cold_lru_page_count() * 1024 * 1024;
    fprintf(stderr, "[DEBUG] page count = %d, remain = %ld MB \n", cold_lru_page_count(), remain / (1024 * 1024));
@@ -103,7 +103,7 @@ static void increase_cold_buffer_size()
 
 static void decrease_cold_buffer_size()
 {
-   size_t remain = (settings.maxbytes *
+   ssize_t remain = (settings.maxbytes *
                      (100 - settings.hot_lru_pct - settings.warm_lru_pct) / 100.0) -
                    cold_lru_page_count() * 1024 * 1024;
    fprintf(stderr, "[DEBUG] page count = %d, remain = %ld MB \n", cold_lru_page_count(), remain / (1024 * 1024));
