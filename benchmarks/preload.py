@@ -28,6 +28,10 @@ def main():
     for i in range(args.count):
         key = f"obj_{i}"
         client.set(key, value)
+        
+    for i in range(args.count):
+        key = f"obj_{i}"
+        client.delete(key)
 
     print(
         f"Inserted {args.count} objects of {args.size_kb} KB "
