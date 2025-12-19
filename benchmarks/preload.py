@@ -13,7 +13,7 @@ def main():
         "-k", "--size-kb", type=int, required=True, help="Size of each object in KB."
     )
     parser.add_argument(
-        "-h", "--host", type=str, default="127.0.0.1", help="Memcached server address."
+        "--host", type=str, default="127.0.0.1", help="Memcached server address."
     )
     parser.add_argument(
         "-p", "--port", type=int, default=11211, help="Memcached server port."
