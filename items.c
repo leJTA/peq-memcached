@@ -1186,6 +1186,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                 if (limit == 0)
                     limit = settings.maxbytes * settings.warm_lru_pct / 100;
                 uint64_t current_bytes = do_get_lru_size(id) * slabs_size(orig_id);
+                // uint64_t current_bytes = lru_page_count(cur_lru) * settings.slab_page_size;
                 if (current_bytes > limit || flags & LRU_PULL_EVICT) {
                     if (cur_lru == WARM_LRU) {
                         item* old_it = search;
@@ -1896,15 +1897,17 @@ static size_t average_item_size()
     return total_size / nitems;
 }
 
-int cold_lru_page_count()
+unsigned int lru_page_count(int lruid)
 {
+    int item_count = 0;
     int page_count = 0;
     for (int clsid = POWER_SMALLEST; clsid < MAX_NUMBER_OF_SLAB_CLASSES; ++clsid) {
-        pthread_mutex_lock(&lru_locks[clsid | COLD_LRU]);
-        if (heads[clsid | COLD_LRU] != NULL) {
-            page_count += slabs_page_count(clsid);
-        }
-        pthread_mutex_unlock(&lru_locks[clsid | COLD_LRU]);
+        if (items_per_slab(clsid) == 0) continue;
+        pthread_mutex_lock(&lru_locks[clsid|lruid]);
+        item_count = do_get_lru_size(clsid|lruid);
+        pthread_mutex_unlock(&lru_locks[clsid|lruid]);
+        if (item_count == 0) continue;
+        page_count += (item_count - 1) / items_per_slab(clsid) + 1; // ceiling
     }
     return page_count;
 }
