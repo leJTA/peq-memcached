@@ -6,12 +6,9 @@
 #include <string.h>
 #include <math.h>
 
-// #define DECOMP_BW_ZSTD 1342177  // 1342177 B/ms <=> 1.2 GB/s (Zstd avg decomp Bandwidth)
-// #define DECOMP_BW_LZ4 3758096 // 3758096 B/ms <=> 3.5 GB/s (LZ4 avg decomp Bandwidth)
-
 #define MIN_WARM_LRU_PCT 10
-#define MAX_WARM_LRU_PCT 75
-#define STEP_PCT 5                  // Adjustments are made by increments/decrements of 5%.
+#define MAX_WARM_LRU_PCT 79
+#define STEP_PCT 1                  // Adjustments are made by increments/decrements of 1%.
 #define THRESHOLD 0.05              // 5%
 #define WARM_COLD_ADJUSTER_SLEEP_MS 1000  // 1000 ms
 
@@ -43,8 +40,8 @@ typedef struct {
    rel_time_t evicted_time;
 } itemstats_t;
 
-static const double disk_bw = 805306.368;    // 805306 B/ms <=> 0.75 GB/s (SATA SSD 6 Gbps)
-static const double ram_bw = 91268055.312;   // 91268055 B/ms <=> 85 GB/s (DDR4 2666MHz dual channel)
+static const double disk_bw = 429916.16;    // B/ms <=> 410 MB/s (SATA SSD 6 Gbps random read 256KB)
+static const double ram_bw = 19864223.744;   // B/ms <=> 18.5 GB/s (DDR4 2666MHz random read 256KB)
 
 static itemstats_t _stats_prev;
 static itemstats_t _stats_curr;
@@ -93,6 +90,12 @@ static double G()
 
 static void increase_cold_buffer_size()
 {
+   ssize_t remain = (settings.maxbytes *
+                     (100 - settings.hot_lru_pct - settings.warm_lru_pct) / 100.0) -
+                   lru_page_count(COLD_LRU) * 1024 * 1024;
+   fprintf(stderr, "[DEBUG] page count = %d, remain = %ld MB \n", lru_page_count(COLD_LRU), remain / (1024 * 1024));
+   if (fabs(remain) > 1024 * 1024) return;
+   
    if (settings.warm_lru_pct > MIN_WARM_LRU_PCT) {
       settings.warm_lru_pct -= STEP_PCT;
    }
@@ -100,6 +103,12 @@ static void increase_cold_buffer_size()
 
 static void decrease_cold_buffer_size()
 {
+   ssize_t remain = (settings.maxbytes *
+                     (100 - settings.hot_lru_pct - settings.warm_lru_pct) / 100.0) -
+                   lru_page_count(COLD_LRU) * 1024 * 1024;
+   fprintf(stderr, "[DEBUG] page count = %d, remain = %ld MB \n", lru_page_count(COLD_LRU), remain / (1024 * 1024));
+   if (fabs(remain) > 1024 * 1024) return;
+
    if (settings.warm_lru_pct < MAX_WARM_LRU_PCT) {
       settings.warm_lru_pct += STEP_PCT;
    }
@@ -130,7 +139,7 @@ static void* warm_cold_adjuster_thread()
       }
 
       // fprintf(stderr, "%.1f,%.1f,%.2f,%d\n", _G_curr, _G_prev, delta, settings.warm_lru_pct);
-      fprintf(stderr, "[DEBUG] G_curr = %.3f, G_prev = %.3f, delta = %.3f, cold_pct = %d\n", _G_curr, _G_prev, delta, 100 - settings.hot_lru_pct - settings.warm_lru_pct);
+      fprintf(stderr, "[DEBUG] G_curr = %.3f, G_prev = %.3f, delta = %.3f, cold_lru = %d%%\n", _G_curr, _G_prev, delta, 100 - settings.hot_lru_pct - settings.warm_lru_pct);
    }
 
    return NULL;
@@ -149,7 +158,7 @@ int start_warm_cold_adjuster_thread(void *arg)
       pthread_mutex_unlock(&warm_cold_adjuster_lock);
       return -1;
    }
-   thread_setname(warm_cold_adjuster_tid, "mc-warm-cold-adjuster");
+   thread_setname(warm_cold_adjuster_tid, "3q-adjuster");
    pthread_mutex_unlock(&warm_cold_adjuster_lock);
 
    return 0;

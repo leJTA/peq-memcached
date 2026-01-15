@@ -1185,7 +1185,14 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
             case WARM_LRU:
                 if (limit == 0)
                     limit = settings.maxbytes * settings.warm_lru_pct / 100;
-                uint64_t current_bytes = do_get_lru_size(id) * slabs_size(orig_id);
+                
+                pthread_mutex_unlock(&lru_locks[id]); // release the lock to avoid a deadlock in lru_page_count
+                uint64_t current_bytes = lru_page_count(cur_lru) * settings.slab_page_size;
+                pthread_mutex_lock(&lru_locks[id]); // reacquire the lock
+
+                if (settings.no_compression) { // if no compression, space partitionning is easier
+                    current_bytes = do_get_lru_size(id) * slabs_size(orig_id);
+                }
                 if (current_bytes > limit || flags & LRU_PULL_EVICT) {
                     if (cur_lru == WARM_LRU) {
                         item* old_it = search;
@@ -1199,11 +1206,6 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                             // the penalized items should be updated afterwardS
                             penalized_dirty_flags[search->slabs_clsid] = true;
                         }
-                        else if (settings.no_compression) {
-                            move_to_lru = COLD_LRU;
-                            itemstats[id].moves_to_cold++;
-                            do_item_unlink_q(search);
-                        }
                         else {
                             do_item_unlink_nolock(search, hv);
                             itemstats[id].evicted++;
@@ -1216,10 +1218,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                     else {
                         history_buffer_lock();
                         assert(!history_buffer_contains(ITEM_key(search), search->nkey));
-                        history_buffer_enqueue(ITEM_key(search), search->nkey, search->exptime, 
-                                               search->nbytes, search->it_flags & ~ITEM_LINKED, // item will be unlinked
-                                               search->slabs_clsid
-                                            );
+                        history_buffer_enqueue(ITEM_key(search), search->nkey);
                         history_buffer_unlock();
                         itemstats[id].moves_to_history_buffer++;
                         do_item_unlink_nolock(search, hv);
@@ -1469,7 +1468,9 @@ static int lru_maintainer_juggle(const int slabs_clsid) {
         }
         // BEGIN CODE (3Q)
         if (penalized_dirty_flags[slabs_clsid | COLD_LRU]) {
+            pthread_mutex_lock(&lru_locks[slabs_clsid | COLD_LRU]);
             mark_penalized(slabs_clsid | COLD_LRU);
+            pthread_mutex_unlock(&lru_locks[slabs_clsid | COLD_LRU]);
         }
         // END CODE (3Q)
         if (do_more == 0)
@@ -1864,8 +1865,8 @@ bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
         do_item_link(new_it, hv, ITEM_get_cas(old_it)); // COLD LRU is not locked
     }
     else {
-        // decompression, move to HOT
-        new_it->slabs_clsid |= HOT_LRU;
+        // decompression, move back to WARM
+        new_it->slabs_clsid |= WARM_LRU;
         new_it->it_flags &= ~ITEM_PENALIZED;
         do_item_unlink(old_it, hv);
         do_item_link(new_it, hv, ITEM_get_cas(old_it));
@@ -1902,13 +1903,26 @@ static size_t average_item_size()
     return total_size / nitems;
 }
 
-static void mark_penalized(int slabs_clsid)
+unsigned int lru_page_count(int lruid)
+{
+    int item_count = 0;
+    int page_count = 0;
+    for (int clsid = POWER_SMALLEST; clsid < MAX_NUMBER_OF_SLAB_CLASSES; ++clsid) {
+        if (items_per_slab(clsid) == 0) continue;
+        pthread_mutex_lock(&lru_locks[clsid|lruid]);
+        item_count = do_get_lru_size(clsid|lruid);
+        pthread_mutex_unlock(&lru_locks[clsid|lruid]);
+        if (item_count == 0) continue;
+        page_count += (item_count - 1) / items_per_slab(clsid) + 1; // ceiling
+    }
+    return page_count;
+}
+
+static void mark_penalized(int slabs_clsid) // COLD_LRU locked here
 {
     assert(penalized_dirty_flags[slabs_clsid] == true);
     item* it = heads[slabs_clsid];
-    int penalized_count = (settings.maxbytes * 
-                            (95 - settings.warm_lru_pct - settings.hot_lru_pct)) /
-                            (100 * average_item_size());
+    int penalized_count = (slabs_page_count(ITEM_clsid(it)) * 1024 * 1024) / average_item_size();
     int rank = 0;
     while (it != NULL) {
         ++rank;

@@ -89,6 +89,12 @@ unsigned int slabs_size(const int clsid) {
     return slabclass[clsid].size;
 }
 
+// BEGIN CODE (3Q)
+unsigned int items_per_slab(const int clsid) {
+    return slabclass[clsid].perslab;
+}
+// END CODE (3Q)
+
 // TODO: could this work with the restartable memory?
 // Docs say hugepages only work with private shm allocs.
 /* Function split out for better error path handling */

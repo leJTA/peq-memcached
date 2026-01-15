@@ -6,6 +6,12 @@
 #include <pthread.h>
 #include <limits.h>
 
+typedef struct history_item {
+	char* key;
+	uint8_t nkey;
+	struct history_item* next;
+} history_item;
+
 typedef struct history_buffer {
    struct history_item* head;
    struct history_item* tail;
@@ -53,8 +59,7 @@ void history_buffer_cleanup(void)
    _history = NULL;
 }
 
-void history_buffer_enqueue(const char* key, uint8_t nkey, rel_time_t exptime, int nbytes,
-									 uint16_t it_flags, uint8_t slabs_clsid)
+void history_buffer_enqueue(const char* key, uint8_t nkey)
 {
    if (_history->size == _history->capacity) {
       history_buffer_dequeue();
@@ -64,10 +69,6 @@ void history_buffer_enqueue(const char* key, uint8_t nkey, rel_time_t exptime, i
    hi->key = malloc(nkey * sizeof(char));
    memcpy(hi->key, key, nkey);
    hi->nkey = nkey;
-   hi->exptime = exptime;
-   hi->nbytes = nbytes;
-   hi->it_flags = it_flags;
-   hi->slabs_clsid = slabs_clsid;
 
    if (_history->head == NULL) {
       _history->head = hi;

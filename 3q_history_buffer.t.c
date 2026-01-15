@@ -12,7 +12,7 @@ MU_TEST(test_create_empty_buffer) {
    history_buffer_init(5);
    
    mu_assert_int_eq(5, history_buffer_capacity());
-   mu_assert_int_eq(32 + 5 * (32 + 255), history_buffer_max_mem_usage());
+   mu_assert_int_eq(32 + 5 * (24 + 255), history_buffer_max_mem_usage());
    mu_assert(history_buffer_is_empty(), "Buffer should be empty");
    mu_assert(history_buffer_tail() == NULL, "Head should be NULL");
    mu_assert(history_buffer_head() == NULL, "Tail should be NULL");
@@ -32,7 +32,7 @@ MU_TEST(test_create_buffer_with_invalid_capacity) {
 MU_TEST(test_enqueue_one_element) {
    history_buffer_init(5);
    
-   history_buffer_enqueue("hello", 5, 0, 0, 0, 0);
+   history_buffer_enqueue("hello", 5);
    mu_assert_int_eq(1, history_buffer_size());
    mu_assert(history_buffer_tail() == history_buffer_head(), "Head and tail should be equal");
    mu_assert(history_buffer_contains("hello", 5), "Should contain 'hello'");
@@ -43,7 +43,7 @@ MU_TEST(test_enqueue_one_element) {
 MU_TEST(test_dequeue_element) {
    history_buffer_init(5);
    
-   history_buffer_enqueue("hello", 5, 0, 0, 0, 0);
+   history_buffer_enqueue("hello", 5);
    history_buffer_dequeue();
    
    mu_assert(!history_buffer_contains("hello", 5), "Should not contain 'hello'");
@@ -57,11 +57,11 @@ MU_TEST(test_dequeue_element) {
 MU_TEST(test_fill_buffer) {
    history_buffer_init(5);
    
-   history_buffer_enqueue("hello", 5, 0, 0, 0, 0);
-   history_buffer_enqueue("world", 5, 0, 0, 0, 0);
-   history_buffer_enqueue("foo", 3, 0, 0, 0, 0);
-   history_buffer_enqueue("bar", 3, 0, 0, 0, 0);
-   history_buffer_enqueue("bazz", 4, 0, 0, 0, 0);
+   history_buffer_enqueue("hello", 5);
+   history_buffer_enqueue("world", 5);
+   history_buffer_enqueue("foo", 3);
+   history_buffer_enqueue("bar", 3);
+   history_buffer_enqueue("bazz", 4);
    
    mu_assert_int_eq(5, history_buffer_size());
    mu_assert(history_buffer_contains("bazz", 4), "Should contain 'bazz'");
@@ -72,12 +72,12 @@ MU_TEST(test_fill_buffer) {
 MU_TEST(test_overflow_buffer) {
    history_buffer_init(5);
    
-   history_buffer_enqueue("hello", 5, 0, 0, 0, 0);
-   history_buffer_enqueue("world", 5, 0, 0, 0, 0);
-   history_buffer_enqueue("foo", 3, 0, 0, 0, 0);
-   history_buffer_enqueue("bar", 3, 0, 0, 0, 0);
-   history_buffer_enqueue("bazz", 4, 0, 0, 0, 0);
-   history_buffer_enqueue("toto", 4, 0, 0, 0, 0); 
+   history_buffer_enqueue("hello", 5);
+   history_buffer_enqueue("world", 5);
+   history_buffer_enqueue("foo", 3);
+   history_buffer_enqueue("bar", 3);
+   history_buffer_enqueue("bazz", 4);
+   history_buffer_enqueue("toto", 4); 
    
    mu_assert(!history_buffer_contains("hello", 5), "Should not contain 'hello'");
    mu_assert_int_eq(5, history_buffer_size());
@@ -88,11 +88,11 @@ MU_TEST(test_overflow_buffer) {
 MU_TEST(test_remove_element) {
    history_buffer_init(5);
    
-   history_buffer_enqueue("hello", 5, 0, 0, 0, 0);
-   history_buffer_enqueue("world", 5, 0, 0, 0, 0);
-   history_buffer_enqueue("foo", 3, 0, 0, 0, 0);
-   history_buffer_enqueue("bar", 3, 0, 0, 0, 0);
-   history_buffer_enqueue("bazz", 4, 0, 0, 0, 0);
+   history_buffer_enqueue("hello", 5);
+   history_buffer_enqueue("world", 5);
+   history_buffer_enqueue("foo", 3);
+   history_buffer_enqueue("bar", 3);
+   history_buffer_enqueue("bazz", 4);
    
    history_item* removed = history_buffer_remove("foo", 3);
    
@@ -107,20 +107,16 @@ MU_TEST(test_remove_element) {
 MU_TEST(test_removed_element_data) {
    history_buffer_init(5);
 
-   history_buffer_enqueue("hello", 5, 0, 0, 0, 0);
-   history_buffer_enqueue("world", 5, 0, 0, 0, 0);
-   history_buffer_enqueue("foo", 3, 3500, 4096, 21845, 39);
-   history_buffer_enqueue("bar", 3, 0, 0, 0, 0);
-   history_buffer_enqueue("bazz", 4, 0, 0, 0, 0);
+   history_buffer_enqueue("hello", 5);
+   history_buffer_enqueue("world", 5);
+   history_buffer_enqueue("foo", 3);
+   history_buffer_enqueue("bar", 3);
+   history_buffer_enqueue("bazz", 4);
 
    history_item* removed = history_buffer_remove("foo", 3);
 
    mu_check(removed != NULL);
    mu_check(!history_buffer_contains("foo", 3));
-   mu_assert_int_eq(removed->exptime, 3500);
-   mu_assert_int_eq(removed->nbytes, 4096);
-   mu_assert_int_eq(removed->it_flags, 21845);
-   mu_assert_int_eq(removed->slabs_clsid, 39);
 
    destroy_history_item(removed);
    history_buffer_cleanup();
@@ -129,10 +125,10 @@ MU_TEST(test_removed_element_data) {
 MU_TEST(test_remove_non_existent_element) {
    history_buffer_init(4);
    
-   history_buffer_enqueue("hello", 5, 0, 0, 0, 0);
-   history_buffer_enqueue("world", 5, 0, 0, 0, 0);
-   history_buffer_enqueue("foo", 3, 0, 0, 0, 0);
-   history_buffer_enqueue("bar", 3, 0, 0, 0, 0);
+   history_buffer_enqueue("hello", 5);
+   history_buffer_enqueue("world", 5);
+   history_buffer_enqueue("foo", 3);
+   history_buffer_enqueue("bar", 3);
    
    history_item* removed = history_buffer_remove("bazz", 4);
    mu_check(removed == NULL);
@@ -144,11 +140,11 @@ MU_TEST(test_remove_non_existent_element) {
 MU_TEST(test_reinsert_element) {
    history_buffer_init(5);
 
-   history_buffer_enqueue("hello", 5, 0, 0, 0, 0);
+   history_buffer_enqueue("hello", 5);
    history_item* removed = history_buffer_remove("hello", 5);
-   history_buffer_enqueue("world", 5, 0, 0, 0, 0);
-   history_buffer_enqueue("foo", 3, 0, 0, 0, 0);
-   history_buffer_enqueue("hello", 5, 0, 0, 0, 0);
+   history_buffer_enqueue("world", 5);
+   history_buffer_enqueue("foo", 3);
+   history_buffer_enqueue("hello", 5);
 
    mu_check(removed != NULL);
    mu_assert_int_eq(3, history_buffer_size());

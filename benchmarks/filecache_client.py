@@ -48,12 +48,12 @@ def latency_stats(data):
 
 def precompute_indices(n_items, n_ops, a):
     """
-    Precompute access indices following a pareto distribution,
-    truncated to [0, n_items-1].
+    Precompute access indices following a zipfian distribution.
     """
     np.random.seed(0)
-    rng = np.random.default_rng()
-    indices = rng.pareto(a, n_ops).astype(int) % n_items
+    pmf = np.array([k**-a for k in range(1, n_items + 1)])
+    pmf /= pmf.sum()  # normalisation
+    indices = np.random.choice(np.arange(n_items), size=n_ops, p=pmf)
     return indices
 
 
@@ -143,6 +143,7 @@ async def main_async(args):
     print(f"  min    : {min_v:.3f}")
     print(f"  max    : {max_v:.3f}")
     print("")
+    print(f"csv : {min_v:.3f},{p25:.3f},{p50:.3f},{p75:.3f},{max_v:.3f},{mean:.3f}")
 
 
 def main():

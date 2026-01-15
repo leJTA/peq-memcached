@@ -8,7 +8,6 @@
 #include <zstd.h>
 #include <lz4.h>
 #include <snappy-c.h>
-#include <zlib.h>
 #include <time.h>
 
 #define MILLION  1000000.0 // for time from ns to ms
@@ -31,7 +30,7 @@ static int _pos;
 static double _times[NVAL];
 static size_t _sizes[NVAL];
 
-void compression_resources_init(int nres)
+void compression_resources_init(void)
 {
 	// +1 for the LRU maintainer thread
 	_num_threads = settings.num_threads + 1;

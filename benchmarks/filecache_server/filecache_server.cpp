@@ -8,9 +8,10 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <future>
 
 std::string data_dir = "/tmp/3q-items-data";
-const int NUM_THREADS = 4;
+const int NUM_THREADS = 8;
 
 struct Memc {
 	memcached_st* memc;
@@ -90,15 +91,15 @@ int main(int argc, char* argv[])
 
 		std::vector<char> buffer((std::istreambuf_iterator<char>(file)),
 										 std::istreambuf_iterator<char>());
+										 
+		// Asynchronous store in cache
+		auto f = std::async(std::launch::async, [&](){
+			memcached_set(memc, key.c_str(), key.size(), buffer.data(), buffer.size(), 0, 0);
+		});
 
 		res.set_content(buffer.data(), buffer.size(), "application/octet-stream");
 
-		// Store in cache
-		memcached_set(memc, key.c_str(), key.size(), buffer.data(), buffer.size(), 0, 0);
-		
-		// drop system cache
-		std::ofstream ofs("/proc/sys/vm/drop_caches");
-		ofs << "3" << std::endl;
+		f.wait();
 	});
 
 	std::cout << "[Server] Listening on port 8000 with " << NUM_THREADS << " worker threads..."
