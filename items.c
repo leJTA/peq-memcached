@@ -1191,7 +1191,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                 pthread_mutex_lock(&lru_locks[id]); // reacquire the lock
 
                 if (settings.no_compression) { // if no compression, space partitionning is easier
-                    uint64_t current_bytes = do_get_lru_size(id) * slabs_size(orig_id);
+                    current_bytes = do_get_lru_size(id) * slabs_size(orig_id);
                 }
                 if (current_bytes > limit || flags & LRU_PULL_EVICT) {
                     if (cur_lru == WARM_LRU) {

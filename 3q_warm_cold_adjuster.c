@@ -139,7 +139,7 @@ static void* warm_cold_adjuster_thread()
       }
 
       // fprintf(stderr, "%.1f,%.1f,%.2f,%d\n", _G_curr, _G_prev, delta, settings.warm_lru_pct);
-      fprintf(stderr, "[DEBUG] G_curr = %.3f, G_prev = %.3f, delta = %.3f, cold_lru = %d\%\n", _G_curr, _G_prev, delta, 100 - settings.hot_lru_pct - settings.warm_lru_pct);
+      fprintf(stderr, "[DEBUG] G_curr = %.3f, G_prev = %.3f, delta = %.3f, cold_lru = %d%%\n", _G_curr, _G_prev, delta, 100 - settings.hot_lru_pct - settings.warm_lru_pct);
    }
 
    return NULL;
