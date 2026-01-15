@@ -1185,8 +1185,14 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
             case WARM_LRU:
                 if (limit == 0)
                     limit = settings.maxbytes * settings.warm_lru_pct / 100;
-                uint64_t current_bytes = do_get_lru_size(id) * slabs_size(orig_id);
-                // uint64_t current_bytes = lru_page_count(cur_lru) * settings.slab_page_size;
+                
+                pthread_mutex_unlock(&lru_locks[id]); // release the lock to avoid a deadlock in lru_page_count
+                uint64_t current_bytes = lru_page_count(cur_lru) * settings.slab_page_size;
+                pthread_mutex_lock(&lru_locks[id]); // reacquire the lock
+
+                if (settings.no_compression) { // if no compression, space partitionning is easier
+                    uint64_t current_bytes = do_get_lru_size(id) * slabs_size(orig_id);
+                }
                 if (current_bytes > limit || flags & LRU_PULL_EVICT) {
                     if (cur_lru == WARM_LRU) {
                         item* old_it = search;

@@ -8,7 +8,6 @@
 #include <zstd.h>
 #include <lz4.h>
 #include <snappy-c.h>
-#include <zlib.h>
 #include <time.h>
 
 #define MILLION  1000000.0 // for time from ns to ms
