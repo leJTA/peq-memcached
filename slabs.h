@@ -20,7 +20,12 @@ void slabs_prefill_global(void);
 
 unsigned int slabs_clsid(const size_t size);
 unsigned int slabs_size(const int clsid);
-unsigned int items_per_slab(const int clsid); // CODE (3Q)
+
+// BEGIN CODE (3Q)
+unsigned int items_per_slab(const int clsid);
+bool slabs_remove(char* ptr, unsigned int id);
+bool slabs_new_from_item(item* it, unsigned int id);
+// END CODE (3Q)
 
 /** Allocate object of given length. 0 on error */ /*@null@*/
 #define SLABS_ALLOC_NO_NEWPAGE 1

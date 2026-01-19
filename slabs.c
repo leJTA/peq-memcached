@@ -57,6 +57,7 @@ static int do_grow_slab_list(const unsigned int id);
 static int do_slabs_newslab(const unsigned int id);
 static void *memory_allocate(size_t size);
 static void do_slabs_free(void *ptr, unsigned int id);
+static void split_slab_page_into_freelist(char *ptr, const unsigned int id);
 
 /* Preallocate as many slab pages as possible (called from slabs_init)
    on start-up, so users don't get confused out-of-memory errors when
@@ -90,9 +91,86 @@ unsigned int slabs_size(const int clsid) {
 }
 
 // BEGIN CODE (3Q)
-unsigned int items_per_slab(const int clsid) {
+unsigned int items_per_slab(const int clsid)
+{
     return slabclass[clsid].perslab;
 }
+
+// lock must be held
+static bool slabs_is_empty(char *ptr, unsigned int id)
+{
+    slabclass_t *p = &slabclass[id];
+    for (int i = 0; i < p->perslab; ++i) {
+        if ((((item *)ptr)->it_flags & ITEM_SLABBED) == 0) {
+            return false;
+        }
+        ptr += p->size;
+    }
+    return true;
+}
+
+bool slabs_remove(char *ptr, unsigned int id)
+{
+    pthread_mutex_lock(&slabs_lock);
+
+    if (!slabs_is_empty(ptr, id)) {
+        pthread_mutex_unlock(&slabs_lock);
+        return false;
+    }
+
+    slabclass_t *p = &slabclass[id];
+
+    // First, remove the slab from slab_list
+    unsigned int pos = 0;
+    while (p->slab_list[pos] != ptr && pos < p->slabs) {
+        ++pos;
+    }
+
+    assert(p->slab_list[pos] == ptr);
+    
+    p->slabs--;
+    for (int i = pos; i < p->slabs; ++i) {
+        p->slab_list[i] = p->slab_list[i + 1];
+    }
+
+    // Second, remove each slots of the slab
+    for (unsigned int i = 0; i < p->perslab; ++i) {
+        do_slabs_unlink_free_chunk(id, (item*)ptr);
+        ptr += p->size;
+    }
+    
+    pthread_mutex_unlock(&slabs_lock);
+
+    return true;
+}
+
+bool slabs_new_from_item(item* it, unsigned int id)
+{
+    assert(it->it_flags & ITEM_SLABBED);
+    
+    pthread_mutex_lock(&slabs_lock);
+
+    char* ptr = (char*)it->data;
+    slabclass_t *p = &slabclass[id];
+    unsigned int clsid = ITEM_clsid(it);
+    int len = slabclass[clsid].size - sizeof(item);
+
+    if ((do_grow_slab_list(id) == 0)) {
+        return false;
+    }
+
+
+    // TODO : edit p->perslab
+    memset(ptr, 0, (size_t)len);
+    split_slab_page_into_freelist(ptr, id);
+
+    p->slab_list[p->slabs++] = ptr;
+
+    pthread_mutex_unlock(&slabs_lock);
+
+    return true;
+}
+
 // END CODE (3Q)
 
 // TODO: could this work with the restartable memory?

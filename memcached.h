@@ -604,6 +604,8 @@ extern struct settings settings;
 // BEGIN CODE (3Q)
 /* if item is in the non penalized section of the cold buffer  */
 #define ITEM_PENALIZED 8192
+/* if item is used as a slab that contains compressed items */
+#define ITEM_MINISLAB 16384
 // END CODE (3Q)
 
 /**
