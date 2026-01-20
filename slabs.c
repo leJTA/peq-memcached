@@ -144,33 +144,74 @@ bool slabs_remove(char *ptr, unsigned int id)
     return true;
 }
 
-bool slabs_new_from_item(item* it, unsigned int id)
+static bool do_slabs_new_from_item(item* it, unsigned int id)
 {
-    assert(it->it_flags & ITEM_SLABBED);
-    
-    pthread_mutex_lock(&slabs_lock);
-
     char* ptr = (char*)it->data;
     slabclass_t *p = &slabclass[id];
-    unsigned int clsid = ITEM_clsid(it);
-    int len = slabclass[clsid].size - sizeof(item);
+    int len = slabclass[ITEM_clsid(it)].size - sizeof(item);
 
     if ((do_grow_slab_list(id) == 0)) {
         return false;
     }
 
+    if (p->perslab == settings.slab_page_size / settings.slab_chunk_size_max) {
+        p->perslab = len / p->size;
+    }
+    assert(p->perslab == len / p->size);
 
-    // TODO : edit p->perslab
     memset(ptr, 0, (size_t)len);
+    it->it_flags = ITEM_SLABBED;
     split_slab_page_into_freelist(ptr, id);
 
     p->slab_list[p->slabs++] = ptr;
-
-    pthread_mutex_unlock(&slabs_lock);
-
+    
     return true;
 }
 
+// copy-paste of slabs_alloc with a few changes
+void* slabs_alloc_from_item(unsigned int parent_id, unsigned int id, unsigned int flags)
+{
+    pthread_mutex_lock(&slabs_lock);
+
+    slabclass_t *p;
+    void *ret = NULL;
+    item *it = NULL;
+
+    if (id < POWER_SMALLEST || id > power_largest) {
+        pthread_mutex_unlock(&slabs_lock);
+        return NULL;
+    }
+    p = &slabclass[id];
+    assert(p->sl_curr == 0 || (((item *)p->slots)->it_flags & ITEM_SLABBED));
+
+    /* fail unless we have space at the end of a recently allocated page,
+       we have something on our freelist, or we could allocate a new minipage from a free item */
+    if (p->sl_curr == 0 && flags != SLABS_ALLOC_NO_NEWPAGE) {
+        item* parent = do_slabs_alloc(parent_id, 0);
+        if (parent != NULL) {
+            do_slabs_new_from_item(parent, id);
+        }
+    }
+
+    if (p->sl_curr != 0) {
+        /* return off our freelist */
+        it = (item *)p->slots;
+        p->slots = it->next;
+        if (it->next) it->next->prev = 0;
+        /* Kill flag and initialize refcount here for lock safety in slab
+         * mover's freeness detection. */
+        it->it_flags &= ~ITEM_SLABBED;
+        it->refcount = 1;
+        p->sl_curr--;
+        ret = (void *)it;
+    } else {
+        ret = NULL;
+    }
+
+    pthread_mutex_unlock(&slabs_lock);
+    
+    return ret;
+}
 // END CODE (3Q)
 
 // TODO: could this work with the restartable memory?

@@ -1823,11 +1823,37 @@ item *do_item_crawl_q(item *it) {
 }
 
 // BEGIN CODE (3Q)
+item* do_subitem_alloc_pull(unsigned int parent_id, unsigned int id)
+{
+    item* it;
+    int i;
+
+    for (i = 0; i < 10; i++) {
+        /* Try to reclaim memory first */
+        it = slabs_alloc_from_item(parent_id, id, 0);
+
+        if (it == NULL) {
+            lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL);
+        } else {
+            break;
+        }
+    }
+
+    if (i > 0) {
+        pthread_mutex_lock(&lru_locks[id]);
+        itemstats[id].direct_reclaims += i;
+        pthread_mutex_unlock(&lru_locks[id]);
+    }
+
+    return it;
+}
+
 bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
 {
     item* old_it = *ptr;
     int new_nbytes = old_it->nbytes + (new_ntotal - old_ntotal);
     uint8_t id = slabs_clsid(new_ntotal);
+    uint8_t parent_id = ITEM_clsid(old_it);
 
     if (old_it->slabs_clsid == id) {
         // This should never happen if the minimal compression ratio is greater than 1.5, 
@@ -1836,7 +1862,7 @@ bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
     }
 
     // 1. allocate new item
-    item* new_it = do_item_alloc_pull(new_ntotal, id);
+    item* new_it = do_subitem_alloc_pull(parent_id, id);
     if (new_it == NULL) {
         pthread_mutex_lock(&lru_locks[id]);
         itemstats[id].outofmemory++;

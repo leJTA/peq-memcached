@@ -36,6 +36,7 @@ item *do_item_crawl_q(item *it);
 void *item_lru_bump_buf_create(void);
 
 // BEGIN CODE (3Q)
+item* do_subitem_alloc_pull(unsigned int parent_id, unsigned int id);
 bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal);
 void set_penalized_dirty(int slabs_clsid);
 void* get_itemstats(void);
