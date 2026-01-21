@@ -1830,7 +1830,7 @@ item* do_subitem_alloc_pull(unsigned int parent_id, unsigned int id)
 
     for (i = 0; i < 10; i++) {
         /* Try to reclaim memory first */
-        it = slabs_alloc_from_item(parent_id, id, 0);
+        it = slabs_alloc_from_itemslab(parent_id, id);
 
         if (it == NULL) {
             lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL);
@@ -1948,7 +1948,7 @@ static void mark_penalized(int slabs_clsid) // COLD_LRU locked here
 {
     assert(penalized_dirty_flags[slabs_clsid] == true);
     item* it = heads[slabs_clsid];
-    int penalized_count = (slabs_page_count(ITEM_clsid(it)) * 1024 * 1024) / average_item_size();
+    int penalized_count = (slabs_page_count(ITEM_clsid(it)) * settings.slab_page_size) / average_item_size();
     int rank = 0;
     while (it != NULL) {
         ++rank;

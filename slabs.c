@@ -28,6 +28,11 @@ typedef struct {
     void *slots;           /* list of item ptrs */
     unsigned int sl_curr;   /* total free items in list */
 
+    // BEGIN CODE (3Q)
+    void* itslabs;              // list if items used as slabs 
+    unsigned int itslabs_count; // size of prev list
+    // END CODE (3Q)
+
     unsigned int slabs;     /* how many slabs were allocated for this class */
 
     void **slab_list;       /* array of slab pointers */
@@ -55,6 +60,7 @@ static pthread_mutex_t slabs_lock = PTHREAD_MUTEX_INITIALIZER;
  */
 static int do_grow_slab_list(const unsigned int id);
 static int do_slabs_newslab(const unsigned int id);
+static void *do_slabs_alloc(unsigned int id, unsigned int flags);
 static void *memory_allocate(size_t size);
 static void do_slabs_free(void *ptr, unsigned int id);
 static void split_slab_page_into_freelist(char *ptr, const unsigned int id);
@@ -109,16 +115,17 @@ static bool slabs_is_empty(char *ptr, unsigned int id)
     return true;
 }
 
-bool slabs_remove(char *ptr, unsigned int id)
+static bool do_slabs_remove_itemslab(item* itsl, unsigned int sid)
 {
-    pthread_mutex_lock(&slabs_lock);
+    assert(itsl->it_flags & ITEM_MINISLAB);
 
-    if (!slabs_is_empty(ptr, id)) {
+    char* ptr = (char*)itsl->data;
+    if (!slabs_is_empty(ptr, sid)) {
         pthread_mutex_unlock(&slabs_lock);
         return false;
     }
 
-    slabclass_t *p = &slabclass[id];
+    slabclass_t *p = &slabclass[sid];
 
     // First, remove the slab from slab_list
     unsigned int pos = 0;
@@ -135,41 +142,47 @@ bool slabs_remove(char *ptr, unsigned int id)
 
     // Second, remove each slots of the slab
     for (unsigned int i = 0; i < p->perslab; ++i) {
-        do_slabs_unlink_free_chunk(id, (item*)ptr);
+        do_slabs_unlink_free_chunk(sid, (item*)ptr);
         ptr += p->size;
     }
-    
-    pthread_mutex_unlock(&slabs_lock);
+
+    // Third, put back item into free list
+    do_slabs_free(itsl, ITEM_clsid(itsl));
 
     return true;
 }
 
-static bool do_slabs_new_from_item(item* it, unsigned int id)
+static bool do_slabs_new_itemslab(item* itsl, unsigned int sid)
 {
-    char* ptr = (char*)it->data;
-    slabclass_t *p = &slabclass[id];
-    int len = slabclass[ITEM_clsid(it)].size - sizeof(item);
+    char* ptr = (char*)itsl->data;
+    slabclass_t *p = &slabclass[sid];
+    int len = slabclass[ITEM_clsid(itsl)].size - sizeof(item);
 
-    if ((do_grow_slab_list(id) == 0)) {
+    if ((do_grow_slab_list(sid) == 0)) {
         return false;
     }
 
-    if (p->perslab == settings.slab_page_size / settings.slab_chunk_size_max) {
+    if (p->perslab == settings.slab_page_size / p->size) {
         p->perslab = len / p->size;
     }
     assert(p->perslab == len / p->size);
 
+    itsl->it_flags = ITEM_MINISLAB;
+    itsl->prev = NULL;
+    itsl->next = p->itslabs;
+    if (itsl->next) itsl->next->prev = itsl; 
+    p->itslabs = (void*)itsl;
+    p->itslabs_count++;
+    
     memset(ptr, 0, (size_t)len);
-    it->it_flags = ITEM_SLABBED;
-    split_slab_page_into_freelist(ptr, id);
-
+    split_slab_page_into_freelist(ptr, sid);
     p->slab_list[p->slabs++] = ptr;
     
     return true;
 }
 
 // copy-paste of slabs_alloc with a few changes
-void* slabs_alloc_from_item(unsigned int parent_id, unsigned int id, unsigned int flags)
+void* slabs_alloc_from_itemslab(unsigned int parent_id, unsigned int sid)
 {
     pthread_mutex_lock(&slabs_lock);
 
@@ -177,19 +190,17 @@ void* slabs_alloc_from_item(unsigned int parent_id, unsigned int id, unsigned in
     void *ret = NULL;
     item *it = NULL;
 
-    if (id < POWER_SMALLEST || id > power_largest) {
+    if (sid < POWER_SMALLEST || sid > power_largest) {
         pthread_mutex_unlock(&slabs_lock);
         return NULL;
     }
-    p = &slabclass[id];
-    assert(p->sl_curr == 0 || (((item *)p->slots)->it_flags & ITEM_SLABBED));
+    p = &slabclass[sid];
 
-    /* fail unless we have space at the end of a recently allocated page,
-       we have something on our freelist, or we could allocate a new minipage from a free item */
-    if (p->sl_curr == 0 && flags != SLABS_ALLOC_NO_NEWPAGE) {
-        item* parent = do_slabs_alloc(parent_id, 0);
+    if (p->sl_curr == 0) {
+        item* parent = (item*)do_slabs_alloc(parent_id, 0);
         if (parent != NULL) {
-            do_slabs_new_from_item(parent, id);
+            do_slabs_new_itemslab(parent, sid);
+            assert(p->sl_curr != 0);
         }
     }
 
@@ -212,6 +223,24 @@ void* slabs_alloc_from_item(unsigned int parent_id, unsigned int id, unsigned in
     
     return ret;
 }
+
+// Peek and revoke an itemslab to a free item
+static bool do_slabs_revoke_itemslab(unsigned int id)
+{
+    slabclass_t* p = &slabclass[id];
+    item* itsl = (item*)p->itslabs;
+    item* sub_it = (item*)itsl->data;
+    while (itsl != NULL) {
+        if (slabs_is_empty((char*)itsl->data, ITEM_clsid(sub_it))) {
+            do_slabs_remove_itemslab(itsl, ITEM_clsid(sub_it));
+            return true;
+        }
+        itsl = itsl->next;
+        sub_it = (item*)itsl->data;
+    }
+    return false;
+}
+
 // END CODE (3Q)
 
 // TODO: could this work with the restartable memory?
@@ -543,6 +572,12 @@ static void *do_slabs_alloc(unsigned int id,
     if (p->sl_curr == 0 && flags != SLABS_ALLOC_NO_NEWPAGE) {
         do_slabs_newslab(id);
     }
+
+    // BEGIN CODE (3Q)
+    if (p->sl_curr == 0) {
+        do_slabs_revoke_itemslab(id);
+    }
+    // END CODE (3Q)
 
     if (p->sl_curr != 0) {
         /* return off our freelist */
