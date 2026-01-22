@@ -1185,14 +1185,8 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
             case WARM_LRU:
                 if (limit == 0)
                     limit = settings.maxbytes * settings.warm_lru_pct / 100;
-                
-                pthread_mutex_unlock(&lru_locks[id]); // release the lock to avoid a deadlock in lru_page_count
-                uint64_t current_bytes = lru_page_count(cur_lru) * settings.slab_page_size;
-                pthread_mutex_lock(&lru_locks[id]); // reacquire the lock
 
-                if (settings.no_compression) { // if no compression, space partitionning is easier
-                    current_bytes = do_get_lru_size(id) * slabs_size(orig_id);
-                }
+                uint64_t current_bytes = do_get_lru_size(id) * (settings.slab_page_size / items_per_slab(orig_id));
                 if (current_bytes > limit || flags & LRU_PULL_EVICT) {
                     if (cur_lru == WARM_LRU) {
                         item* old_it = search;
@@ -1203,7 +1197,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                             do_item_remove(old_it); // old_it->refcount 1 -> 0 -> item_free
                             // increase the refcount of the compressed item
                             refcount_incr(search);
-                            // the penalized items should be updated afterwardS
+                            // the penalized items should be updated afterwards
                             penalized_dirty_flags[search->slabs_clsid] = true;
                         }
                         else {
@@ -1851,9 +1845,11 @@ item* do_subitem_alloc_pull(unsigned int parent_id, unsigned int id)
 bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
 {
     item* old_it = *ptr;
+    item* new_it = NULL;
     int new_nbytes = old_it->nbytes + (new_ntotal - old_ntotal);
     uint8_t id = slabs_clsid(new_ntotal);
     uint8_t parent_id = ITEM_clsid(old_it);
+    bool is_compressing = (old_ntotal > new_ntotal);
 
     if (old_it->slabs_clsid == id) {
         // This should never happen if the minimal compression ratio is greater than 1.5, 
@@ -1862,7 +1858,13 @@ bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
     }
 
     // 1. allocate new item
-    item* new_it = do_subitem_alloc_pull(parent_id, id);
+    if (is_compressing) {
+        // for compressed item, we use our special allocator
+        new_it = do_subitem_alloc_pull(parent_id, id);
+    }
+    else {
+        new_it = do_item_alloc_pull(new_ntotal, id);
+    }
     if (new_it == NULL) {
         pthread_mutex_lock(&lru_locks[id]);
         itemstats[id].outofmemory++;
@@ -1883,15 +1885,15 @@ bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal)
     assert(old_it->it_flags & ITEM_LINKED);
     uint32_t hv = hash(ITEM_key(old_it), old_it->nkey);
     assert(assoc_find(ITEM_key(old_it), old_it->nkey, hv) != NULL);
-    if (new_it->nbytes < old_it->nbytes) {
-        // compression, move to COLD
+    if (is_compressing) {
+        // compression => move to COLD
         new_it->slabs_clsid |= COLD_LRU;
         new_it->it_flags |= ITEM_PENALIZED;
         do_item_unlink_nolock(old_it, hv);  // WARM LRU is already locked from lru_pull_tail
         do_item_link(new_it, hv, ITEM_get_cas(old_it)); // COLD LRU is not locked
     }
     else {
-        // decompression, move back to WARM
+        // decompression => move back to WARM
         new_it->slabs_clsid |= WARM_LRU;
         new_it->it_flags &= ~ITEM_PENALIZED;
         do_item_unlink(old_it, hv);

@@ -146,7 +146,16 @@ static bool do_slabs_remove_itemslab(item* itsl, unsigned int sid)
         ptr += p->size;
     }
 
-    // Third, put back item into free list
+    // Third, remove the parent from the itslabs list
+    p = &slabclass[ITEM_clsid(itsl)];
+    if (p->itslabs == itsl) {
+        p->itslabs = itsl->next;
+    }
+    if (itsl->next) itsl->next->prev = itsl->prev;
+    if (itsl->prev) itsl->prev->next = itsl->next;
+    p->itslabs_count--;
+
+    // Fouth, put back item into free list
     do_slabs_free(itsl, ITEM_clsid(itsl));
 
     return true;
@@ -166,17 +175,18 @@ static bool do_slabs_new_itemslab(item* itsl, unsigned int sid)
         p->perslab = len / p->size;
     }
     assert(p->perslab == len / p->size);
+    
+    memset(ptr, 0, (size_t)len);
+    split_slab_page_into_freelist(ptr, sid);
+    p->slab_list[p->slabs++] = ptr;
 
+    p = &slabclass[ITEM_clsid(itsl)]; // now we point to the slabclass of the parent (itsl)
     itsl->it_flags = ITEM_MINISLAB;
     itsl->prev = NULL;
     itsl->next = p->itslabs;
     if (itsl->next) itsl->next->prev = itsl; 
     p->itslabs = (void*)itsl;
     p->itslabs_count++;
-    
-    memset(ptr, 0, (size_t)len);
-    split_slab_page_into_freelist(ptr, sid);
-    p->slab_list[p->slabs++] = ptr;
     
     return true;
 }
@@ -575,7 +585,8 @@ static void *do_slabs_alloc(unsigned int id,
 
     // BEGIN CODE (3Q)
     if (p->sl_curr == 0) {
-        do_slabs_revoke_itemslab(id);
+        __attribute__((unused)) bool revoked = do_slabs_revoke_itemslab(id);
+        assert(!revoked || p->sl_curr != 0);
     }
     // END CODE (3Q)
 
