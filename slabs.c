@@ -119,16 +119,25 @@ static void do_slabs_reset(char* ptr, unsigned int sid)
 {
     slabclass_t *p = &slabclass[sid];
     item* it = NULL;
+    uint32_t hv = 0;
+    void* hold_lock = NULL;
+
     for (int i = 0; i < p->perslab; ++i) {
         it = (item *)ptr;
         if ((it->it_flags & ITEM_SLABBED) == 0) {
-            refcount_incr(it); // to avoid calling item_free which will cause slab deadlock
-            fprintf(stderr, "[DEBUG] begin\n");
-            item_unlink(it);
-            fprintf(stderr, "[DEBUG] end\n");
+            hv = hash(ITEM_key(it), it->nkey);
+            if ((hold_lock = item_trylock(hv)) == NULL) {
+                // Unable to lock, bail-out.
+                return;
+            }
+            // to avoid calling item_free which will cause slab deadlock
+            refcount_incr(it);
+            do_item_unlink(it, hv);
             if (refcount_decr(it) == 0) {
                 do_slabs_free(it, ITEM_clsid(it));
             }
+
+            item_trylock_unlock(hold_lock);
         }
         ptr += p->size;
     }
@@ -211,7 +220,6 @@ static bool do_slabs_lru_remove(unsigned int id)
     }
 
     do_slabs_reset((char*)lru_itsl->data, sid);
-    assert(slabs_is_empty((char*)lru_itsl->data, sid));
     return do_slabs_try_remove_itemslab(lru_itsl, sid);
 }
 
