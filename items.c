@@ -187,7 +187,7 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
             // pulling to evict, or forcing HOT -> COLD migration.
             // As of this writing, total_bytes isn't at all used with COLD_LRU.
             // BEGIN CODE EDIT (3Q)
-            if (lru_pull_tail(id, HOT_LRU, 0, LRU_PULL_EVICT, 0, NULL) <= 0) {
+            if (!slabs_lru_remove(id) || lru_pull_tail(id, HOT_LRU, 0, LRU_PULL_EVICT, 0, NULL) <= 0) {
                 if (settings.lru_segmented) {
                     lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL);
             // END CODE EDIT (3Q)
@@ -1948,6 +1948,8 @@ unsigned int lru_page_count(int lruid)
 
 static void mark_penalized(int slabs_clsid) // COLD_LRU locked here
 {
+    if (heads[slabs_clsid] == NULL) return;
+
     assert(penalized_dirty_flags[slabs_clsid] == true);
     item* it = heads[slabs_clsid];
     int penalized_count = (slabs_page_count(ITEM_clsid(it)) * settings.slab_page_size) / average_item_size();

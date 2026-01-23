@@ -23,7 +23,8 @@ unsigned int slabs_size(const int clsid);
 
 // BEGIN CODE (3Q)
 unsigned int items_per_slab(const int clsid);
-void* slabs_alloc_from_itemslab(unsigned int parent_id, unsigned int id); 
+void* slabs_alloc_from_itemslab(unsigned int parent_id, unsigned int id);
+bool slabs_lru_remove(unsigned int id);
 // END CODE (3Q)
 
 /** Allocate object of given length. 0 on error */ /*@null@*/

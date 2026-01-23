@@ -115,13 +115,31 @@ static bool slabs_is_empty(char *ptr, unsigned int id)
     return true;
 }
 
-static bool do_slabs_remove_itemslab(item* itsl, unsigned int sid)
+static void do_slabs_reset(char* ptr, unsigned int sid)
+{
+    slabclass_t *p = &slabclass[sid];
+    item* it = NULL;
+    for (int i = 0; i < p->perslab; ++i) {
+        it = (item *)ptr;
+        if ((it->it_flags & ITEM_SLABBED) == 0) {
+            refcount_incr(it); // to avoid calling item_free which will cause slab deadlock
+            fprintf(stderr, "[DEBUG] begin\n");
+            item_unlink(it);
+            fprintf(stderr, "[DEBUG] end\n");
+            if (refcount_decr(it) == 0) {
+                do_slabs_free(it, ITEM_clsid(it));
+            }
+        }
+        ptr += p->size;
+    }
+}
+
+static bool do_slabs_try_remove_itemslab(item* itsl, unsigned int sid)
 {
     assert(itsl->it_flags & ITEM_MINISLAB);
 
     char* ptr = (char*)itsl->data;
     if (!slabs_is_empty(ptr, sid)) {
-        pthread_mutex_unlock(&slabs_lock);
         return false;
     }
 
@@ -159,6 +177,69 @@ static bool do_slabs_remove_itemslab(item* itsl, unsigned int sid)
     do_slabs_free(itsl, ITEM_clsid(itsl));
 
     return true;
+}
+
+static bool do_slabs_lru_remove(unsigned int id)
+{
+    if (slabclass[id].itslabs_count == 0) {
+        return false;
+    }
+
+    item* itsl = (item*)slabclass[id].itslabs;
+    unsigned int sid = ITEM_clsid((item*)itsl->data);
+    slabclass_t* p = &slabclass[sid];
+    char* ptr = NULL;
+    item* lru_itsl = NULL;
+    rel_time_t lru_time = UINT32_MAX;
+
+    // Slabs are ordered by the recency of their most recently accessed object; 
+    // the slab with the oldest such access is evicted first.
+    
+    while (itsl != NULL) {
+        // find the most recent access of each slab
+        ptr = (char*)itsl->data;
+        rel_time_t most_recent = 0;
+        for (int j = 0; j < p->perslab; ++j) {
+            if (most_recent < ((item*)ptr)->time) most_recent = ((item*)ptr)->time;
+            ptr += p->size;
+        }
+        // find the least recent slab
+        if (most_recent < lru_time) {
+            lru_itsl = itsl;
+        }
+        itsl = itsl->next;
+    }
+
+    do_slabs_reset((char*)lru_itsl->data, sid);
+    assert(slabs_is_empty((char*)lru_itsl->data, sid));
+    return do_slabs_try_remove_itemslab(lru_itsl, sid);
+}
+
+bool slabs_lru_remove(unsigned int id)
+{
+    bool ret;
+    pthread_mutex_lock(&slabs_lock);
+    ret = do_slabs_lru_remove(id);
+    pthread_mutex_unlock(&slabs_lock);
+    return ret;
+}
+
+// Peek and remove an empty itemslab to obtain a free item
+static bool do_slabs_peek_and_remove_itemslab(unsigned int id)
+{
+    slabclass_t* p = &slabclass[id];
+    item* itsl = (item*)p->itslabs;
+    item* sub_it = (item*)itsl->data;
+    while (itsl != NULL) {
+        if (slabs_is_empty((char*)itsl->data, ITEM_clsid(sub_it))) {
+            do_slabs_try_remove_itemslab(itsl, ITEM_clsid(sub_it));
+            assert(p->itslabs_count == slabclass[ITEM_clsid(sub_it)].slabs);
+            return true;
+        }
+        itsl = itsl->next;
+        sub_it = (item*)itsl->data;
+    }
+    return false;
 }
 
 static bool do_slabs_new_itemslab(item* itsl, unsigned int sid)
@@ -211,6 +292,7 @@ void* slabs_alloc_from_itemslab(unsigned int parent_id, unsigned int sid)
         if (parent != NULL) {
             do_slabs_new_itemslab(parent, sid);
             assert(p->sl_curr != 0);
+            assert(p->slabs == slabclass[parent_id].itslabs_count);
         }
     }
 
@@ -233,24 +315,6 @@ void* slabs_alloc_from_itemslab(unsigned int parent_id, unsigned int sid)
     
     return ret;
 }
-
-// Peek and revoke an itemslab to a free item
-static bool do_slabs_revoke_itemslab(unsigned int id)
-{
-    slabclass_t* p = &slabclass[id];
-    item* itsl = (item*)p->itslabs;
-    item* sub_it = (item*)itsl->data;
-    while (itsl != NULL) {
-        if (slabs_is_empty((char*)itsl->data, ITEM_clsid(sub_it))) {
-            do_slabs_remove_itemslab(itsl, ITEM_clsid(sub_it));
-            return true;
-        }
-        itsl = itsl->next;
-        sub_it = (item*)itsl->data;
-    }
-    return false;
-}
-
 // END CODE (3Q)
 
 // TODO: could this work with the restartable memory?
@@ -585,8 +649,8 @@ static void *do_slabs_alloc(unsigned int id,
 
     // BEGIN CODE (3Q)
     if (p->sl_curr == 0) {
-        __attribute__((unused)) bool revoked = do_slabs_revoke_itemslab(id);
-        assert(!revoked || p->sl_curr != 0);
+        __attribute__((unused)) bool removed = do_slabs_peek_and_remove_itemslab(id);
+        assert(!removed || p->sl_curr != 0);
     }
     // END CODE (3Q)
 
