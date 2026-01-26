@@ -28,6 +28,11 @@ typedef struct {
     void *slots;           /* list of item ptrs */
     unsigned int sl_curr;   /* total free items in list */
 
+    // BEGIN CODE (3Q)
+    void* itslabs;              // list if items used as slabs 
+    unsigned int itslabs_count; // size of prev list
+    // END CODE (3Q)
+
     unsigned int slabs;     /* how many slabs were allocated for this class */
 
     void **slab_list;       /* array of slab pointers */
@@ -55,8 +60,10 @@ static pthread_mutex_t slabs_lock = PTHREAD_MUTEX_INITIALIZER;
  */
 static int do_grow_slab_list(const unsigned int id);
 static int do_slabs_newslab(const unsigned int id);
+static void *do_slabs_alloc(unsigned int id, unsigned int flags);
 static void *memory_allocate(size_t size);
 static void do_slabs_free(void *ptr, unsigned int id);
+static void split_slab_page_into_freelist(char *ptr, const unsigned int id);
 
 /* Preallocate as many slab pages as possible (called from slabs_init)
    on start-up, so users don't get confused out-of-memory errors when
@@ -90,8 +97,217 @@ unsigned int slabs_size(const int clsid) {
 }
 
 // BEGIN CODE (3Q)
-unsigned int items_per_slab(const int clsid) {
+unsigned int items_per_slab(const int clsid)
+{
     return slabclass[clsid].perslab;
+}
+
+// lock must be held
+static bool slabs_is_empty(char *ptr, unsigned int id)
+{
+    slabclass_t *p = &slabclass[id];
+    for (int i = 0; i < p->perslab; ++i) {
+        if ((((item *)ptr)->it_flags & ITEM_SLABBED) == 0) {
+            return false;
+        }
+        ptr += p->size;
+    }
+    return true;
+}
+
+static void do_slabs_reset(char* ptr, unsigned int sid)
+{
+    slabclass_t *p = &slabclass[sid];
+    item* it = NULL;
+    uint32_t hv = 0;
+    void* hold_lock = NULL;
+
+    for (int i = 0; i < p->perslab; ++i) {
+        it = (item *)ptr;
+        if ((it->it_flags & ITEM_SLABBED) == 0) {
+            hv = hash(ITEM_key(it), it->nkey);
+            if ((hold_lock = item_trylock(hv)) == NULL) {
+                // Unable to lock, bail-out.
+                return;
+            }
+            refcount_incr(it); // to avoid calling item_free which will cause slab deadlock
+            do_item_unlink(it, hv);
+            if (refcount_decr(it) == 0) {
+                do_slabs_free(it, ITEM_clsid(it));
+            }
+
+            item_trylock_unlock(hold_lock);
+        }
+        ptr += p->size;
+    }
+}
+
+static bool do_slabs_try_remove_itemslab(item* itsl, unsigned int sid)
+{
+    assert(itsl->it_flags & ITEM_MINISLAB);
+
+    char* ptr = (char*)itsl->data;
+    if (!slabs_is_empty(ptr, sid)) {
+        return false;
+    }
+
+    slabclass_t *p = &slabclass[sid];
+
+    // First, remove the slab from slab_list
+    unsigned int pos = 0;
+    while (p->slab_list[pos] != ptr && pos < p->slabs) {
+        ++pos;
+    }
+
+    assert(p->slab_list[pos] == ptr);
+    
+    p->slabs--;
+    for (int i = pos; i < p->slabs; ++i) {
+        p->slab_list[i] = p->slab_list[i + 1];
+    }
+
+    // Second, remove each slots of the slab
+    for (unsigned int i = 0; i < p->perslab; ++i) {
+        do_slabs_unlink_free_chunk(sid, (item*)ptr);
+        ptr += p->size;
+    }
+
+    // Third, remove the parent from the itslabs list
+    p = &slabclass[ITEM_clsid(itsl)];
+    if (p->itslabs == itsl) {
+        p->itslabs = itsl->next;
+    }
+    if (itsl->next) itsl->next->prev = itsl->prev;
+    if (itsl->prev) itsl->prev->next = itsl->next;
+    p->itslabs_count--;
+
+    // Fouth, put back item into free list
+    do_slabs_free(itsl, ITEM_clsid(itsl));
+
+    return true;
+}
+
+static bool do_slabs_lru_remove(unsigned int id)
+{
+    if (slabclass[id].itslabs_count == 0) {
+        return false;
+    }
+
+    uint64_t current_byte = slabclass[id].itslabs_count * slabclass[id].size;
+    if (current_byte < (100 - settings.warm_lru_pct - settings.hot_lru_pct) * settings.maxbytes / 100) {
+        return false;
+    }
+
+    item* itsl = (item*)slabclass[id].itslabs;
+    unsigned int sid = ITEM_clsid((item*)itsl->data);
+    slabclass_t* p = &slabclass[sid];
+    char* ptr = NULL;
+    item* lru_itsl = NULL;
+    rel_time_t lru_time = UINT32_MAX;
+
+    // Slabs are ordered by the recency of their most recently accessed object; 
+    // the slab with the oldest such access is evicted first.
+    
+    while (itsl != NULL) {
+        // find the most recent access of each slab
+        ptr = (char*)itsl->data;
+        rel_time_t most_recent = 0;
+        for (int j = 0; j < p->perslab; ++j) {
+            if (most_recent < ((item*)ptr)->time) most_recent = ((item*)ptr)->time;
+            ptr += p->size;
+        }
+        // find the least recent slab
+        if (most_recent < lru_time) {
+            lru_itsl = itsl;
+        }
+        itsl = itsl->next;
+    }
+
+    do_slabs_reset((char*)lru_itsl->data, sid);
+    return do_slabs_try_remove_itemslab(lru_itsl, sid);
+}
+
+bool slabs_lru_remove(unsigned int id)
+{
+    bool ret;
+    pthread_mutex_lock(&slabs_lock);
+    ret = do_slabs_lru_remove(id);
+    pthread_mutex_unlock(&slabs_lock);
+    return ret;
+}
+
+static bool do_slabs_new_itemslab(item* itsl, unsigned int sid)
+{
+    char* ptr = (char*)itsl->data;
+    slabclass_t *p = &slabclass[sid];
+    int len = slabclass[ITEM_clsid(itsl)].size - sizeof(item);
+
+    if ((do_grow_slab_list(sid) == 0)) {
+        return false;
+    }
+
+    if (p->perslab == settings.slab_page_size / p->size) {
+        p->perslab = len / p->size;
+    }
+    assert(p->perslab == len / p->size);
+    
+    memset(ptr, 0, (size_t)len);
+    split_slab_page_into_freelist(ptr, sid);
+    p->slab_list[p->slabs++] = ptr;
+
+    p = &slabclass[ITEM_clsid(itsl)]; // now we point to the slabclass of the parent (itsl)
+    itsl->it_flags = ITEM_MINISLAB;
+    itsl->prev = NULL;
+    itsl->next = p->itslabs;
+    if (itsl->next) itsl->next->prev = itsl; 
+    p->itslabs = (void*)itsl;
+    p->itslabs_count++;
+    
+    return true;
+}
+
+// copy-paste of slabs_alloc with a few changes
+void* slabs_alloc_from_itemslab(unsigned int parent_id, unsigned int sid)
+{
+    pthread_mutex_lock(&slabs_lock);
+
+    slabclass_t *p;
+    void *ret = NULL;
+    item *it = NULL;
+
+    if (sid < POWER_SMALLEST || sid > power_largest) {
+        pthread_mutex_unlock(&slabs_lock);
+        return NULL;
+    }
+    p = &slabclass[sid];
+
+    if (p->sl_curr == 0) {
+        item* parent = (item*)do_slabs_alloc(parent_id, 0);
+        if (parent != NULL) {
+            do_slabs_new_itemslab(parent, sid);
+            assert(p->sl_curr != 0);
+            assert(p->slabs == slabclass[parent_id].itslabs_count);
+        }
+    }
+
+    if (p->sl_curr != 0) {
+        /* return off our freelist */
+        it = (item *)p->slots;
+        p->slots = it->next;
+        if (it->next) it->next->prev = 0;
+        /* Kill flag and initialize refcount here for lock safety in slab
+         * mover's freeness detection. */
+        it->it_flags &= ~ITEM_SLABBED;
+        it->refcount = 1;
+        p->sl_curr--;
+        ret = (void *)it;
+    } else {
+        ret = NULL;
+    }
+
+    pthread_mutex_unlock(&slabs_lock);
+    
+    return ret;
 }
 // END CODE (3Q)
 
