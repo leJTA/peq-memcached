@@ -90,11 +90,11 @@ static double G()
 
 static void increase_cold_buffer_size()
 {
-   ssize_t remain = (settings.maxbytes *
-                     (100 - settings.hot_lru_pct - settings.warm_lru_pct) / 100.0) -
-                   lru_page_count(COLD_LRU) * 1024 * 1024;
-   fprintf(stderr, "[DEBUG] page count = %d, remain = %ld MB \n", lru_page_count(COLD_LRU), remain / (1024 * 1024));
-   if (fabs(remain) > 1024 * 1024) return;
+   ssize_t allocated = cold_lru_bytes();
+   double allocated_pct = allocated * 100.0 / settings.maxbytes;
+   int theoretical_pct = 100 - settings.hot_lru_pct - settings.warm_lru_pct;
+   fprintf(stderr, "[DEBUG] allocated = %ld MB, pct = %.2f%% \n", allocated / (1024 * 1024), allocated_pct);
+   if (fabs(allocated_pct - theoretical_pct) > 1) return;
    
    if (settings.warm_lru_pct > MIN_WARM_LRU_PCT) {
       settings.warm_lru_pct -= STEP_PCT;
@@ -103,11 +103,11 @@ static void increase_cold_buffer_size()
 
 static void decrease_cold_buffer_size()
 {
-   ssize_t remain = (settings.maxbytes *
-                     (100 - settings.hot_lru_pct - settings.warm_lru_pct) / 100.0) -
-                   lru_page_count(COLD_LRU) * 1024 * 1024;
-   fprintf(stderr, "[DEBUG] page count = %d, remain = %ld MB \n", lru_page_count(COLD_LRU), remain / (1024 * 1024));
-   if (fabs(remain) > 1024 * 1024) return;
+   ssize_t allocated = cold_lru_bytes();
+   double allocated_pct = allocated * 100.0 / settings.maxbytes;
+   int theoretical_pct = 100 - settings.hot_lru_pct - settings.warm_lru_pct;
+   fprintf(stderr, "[DEBUG] allocated = %ld MB, pct = %.2f%% \n", allocated / (1024 * 1024), allocated_pct);
+   if (fabs(allocated_pct - theoretical_pct) > 1024 * 1024) return;
 
    if (settings.warm_lru_pct < MAX_WARM_LRU_PCT) {
       settings.warm_lru_pct += STEP_PCT;

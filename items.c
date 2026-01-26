@@ -187,7 +187,7 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
             // pulling to evict, or forcing HOT -> COLD migration.
             // As of this writing, total_bytes isn't at all used with COLD_LRU.
             // BEGIN CODE EDIT (3Q)
-            if (!slabs_lru_remove(id) || lru_pull_tail(id, HOT_LRU, 0, LRU_PULL_EVICT, 0, NULL) <= 0) {
+            if (!slabs_lru_remove(id) && lru_pull_tail(id, HOT_LRU, 0, LRU_PULL_EVICT, 0, NULL) <= 0) {
                 if (settings.lru_segmented) {
                     lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL);
             // END CODE EDIT (3Q)
@@ -1827,7 +1827,9 @@ item* do_subitem_alloc_pull(unsigned int parent_id, unsigned int id)
         it = slabs_alloc_from_itemslab(parent_id, id);
 
         if (it == NULL) {
-            lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL);
+            if (lru_pull_tail(parent_id, HOT_LRU, 0, 0, 0, NULL) <= 0) {
+				lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL);
+			}
         } else {
             break;
         }
@@ -1944,6 +1946,17 @@ unsigned int lru_page_count(int lruid)
         page_count += (item_count - 1) / items_per_slab(clsid) + 1; // ceiling
     }
     return page_count;
+}
+
+size_t cold_lru_bytes(void)
+{
+    size_t bytes = 0;
+    for (int clsid = POWER_SMALLEST; clsid < MAX_NUMBER_OF_SLAB_CLASSES; ++clsid) {
+        pthread_mutex_lock(&lru_locks[clsid|COLD_LRU]);
+        bytes += slabs_size(clsid) * do_get_lru_size(clsid|COLD_LRU);
+        pthread_mutex_unlock(&lru_locks[clsid|COLD_LRU]);
+    }
+    return bytes;
 }
 
 static void mark_penalized(int slabs_clsid) // COLD_LRU locked here

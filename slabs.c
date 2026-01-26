@@ -130,8 +130,7 @@ static void do_slabs_reset(char* ptr, unsigned int sid)
                 // Unable to lock, bail-out.
                 return;
             }
-            // to avoid calling item_free which will cause slab deadlock
-            refcount_incr(it);
+            refcount_incr(it); // to avoid calling item_free which will cause slab deadlock
             do_item_unlink(it, hv);
             if (refcount_decr(it) == 0) {
                 do_slabs_free(it, ITEM_clsid(it));
@@ -194,6 +193,11 @@ static bool do_slabs_lru_remove(unsigned int id)
         return false;
     }
 
+    uint64_t current_byte = slabclass[id].itslabs_count * slabclass[id].size;
+    if (current_byte < (100 - settings.warm_lru_pct - settings.hot_lru_pct) * settings.maxbytes / 100) {
+        return false;
+    }
+
     item* itsl = (item*)slabclass[id].itslabs;
     unsigned int sid = ITEM_clsid((item*)itsl->data);
     slabclass_t* p = &slabclass[sid];
@@ -230,24 +234,6 @@ bool slabs_lru_remove(unsigned int id)
     ret = do_slabs_lru_remove(id);
     pthread_mutex_unlock(&slabs_lock);
     return ret;
-}
-
-// Peek and remove an empty itemslab to obtain a free item
-static bool do_slabs_peek_and_remove_itemslab(unsigned int id)
-{
-    slabclass_t* p = &slabclass[id];
-    item* itsl = (item*)p->itslabs;
-    item* sub_it = (item*)itsl->data;
-    while (itsl != NULL) {
-        if (slabs_is_empty((char*)itsl->data, ITEM_clsid(sub_it))) {
-            do_slabs_try_remove_itemslab(itsl, ITEM_clsid(sub_it));
-            assert(p->itslabs_count == slabclass[ITEM_clsid(sub_it)].slabs);
-            return true;
-        }
-        itsl = itsl->next;
-        sub_it = (item*)itsl->data;
-    }
-    return false;
 }
 
 static bool do_slabs_new_itemslab(item* itsl, unsigned int sid)
@@ -654,13 +640,6 @@ static void *do_slabs_alloc(unsigned int id,
     if (p->sl_curr == 0 && flags != SLABS_ALLOC_NO_NEWPAGE) {
         do_slabs_newslab(id);
     }
-
-    // BEGIN CODE (3Q)
-    if (p->sl_curr == 0) {
-        __attribute__((unused)) bool removed = do_slabs_peek_and_remove_itemslab(id);
-        assert(!removed || p->sl_curr != 0);
-    }
-    // END CODE (3Q)
 
     if (p->sl_curr != 0) {
         /* return off our freelist */

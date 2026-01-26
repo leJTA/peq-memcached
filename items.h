@@ -41,6 +41,7 @@ bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal);
 void set_penalized_dirty(int slabs_clsid);
 void* get_itemstats(void);
 unsigned int lru_page_count(int);
+size_t cold_lru_bytes(void);
 // END CODE (3Q)
 
 #define LRU_PULL_EVICT 1
