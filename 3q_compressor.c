@@ -27,7 +27,8 @@ static int _num_threads;
 
 static struct timespec _start, _end;
 static int _pos;
-static double _times[NVAL];
+static double _decomp_times[NVAL];
+static double _read_times[NVAL];
 static size_t _sizes[NVAL];
 
 void compression_resources_init(void)
@@ -183,7 +184,7 @@ bool do_decompress_item(item** ptr)
 	}
 
 	clock_gettime(CLOCK_MONOTONIC, &_end);
-	_times[_pos] = (_end.tv_nsec - _start.tv_nsec) / MILLION;
+	_decomp_times[_pos] = (_end.tv_nsec - _start.tv_nsec) / MILLION;
 
 	new_ntotal = old_ntotal + (decompressed_size - it->nbytes);
 	assert(it->nbytes < decompressed_size);
@@ -197,7 +198,7 @@ bool do_decompress_item(item** ptr)
 	memcpy(ITEM_data(*ptr), rc.buffer, decompressed_size);
 
 	clock_gettime(CLOCK_MONOTONIC, &_end);
-	_times[_pos] += (_end.tv_nsec - _start.tv_nsec) / MILLION;
+	_read_times[_pos] = (_end.tv_nsec - _start.tv_nsec) / MILLION;
 	_sizes[_pos] = decompressed_size;
 	_pos = (_pos + 1) % NVAL;
 	
@@ -209,7 +210,21 @@ double get_decompression_bw(void)
 	double ttime = 0;
 	size_t tsize = 0;
 	for (int i = 0; i < NVAL; ++i) {
-		ttime += _times[i];
+		ttime += _decomp_times[i];
+		tsize += _sizes[i];
+	}
+
+	if (ttime == 0) return 214748364; // if ttime is zero, we set the bandwidth to 200 GB/s
+	
+	return tsize / ttime;
+}
+
+double get_read_memory_bw(void)
+{
+	double ttime = 0;
+	size_t tsize = 0;
+	for (int i = 0; i < NVAL; ++i) {
+		ttime += _read_times[i];
 		tsize += _sizes[i];
 	}
 

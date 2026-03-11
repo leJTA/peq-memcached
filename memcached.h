@@ -1113,4 +1113,6 @@ extern void drop_worker_privileges(void);
 
 // BEGIN CODE (3Q)
 int get_thread_base_id(void);
+double get_hit_latency(void);
+double get_pen_hit_latency(void);
 // END CODE (3Q)

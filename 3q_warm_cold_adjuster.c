@@ -10,7 +10,7 @@
 #define MAX_WARM_LRU_PCT 79
 #define STEP_PCT 1                  // Adjustments are made by increments/decrements of 1%.
 #define THRESHOLD 0.05              // 5%
-#define WARM_COLD_ADJUSTER_SLEEP_MS 1000  // 1000 ms
+#define WARM_COLD_ADJUSTER_SLEEP_MS 5000  // 5000 ms
 
 static volatile int do_run_warm_cold_adjuster = 0;
 static pthread_mutex_t warm_cold_adjuster_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -41,7 +41,6 @@ typedef struct {
 } itemstats_t;
 
 static const double disk_bw = 429916.16;    // B/ms <=> 410 MB/s (SATA SSD 6 Gbps random read 256KB)
-static const double ram_bw = 19864223.744;   // B/ms <=> 18.5 GB/s (DDR4 2666MHz random read 256KB)
 
 static itemstats_t _stats_prev;
 static itemstats_t _stats_curr;
@@ -50,6 +49,8 @@ static uint64_t _avoided_misses;
 static double _acceptance_rate = 0;
 static double _G_prev = 0;
 static double _G_curr = 0;
+static ssize_t _used_bytes;
+static double _used_pct;
 
 static void retrieve_stats(itemstats_t* stats)
 {
@@ -81,20 +82,31 @@ static double G()
 							(_stats_curr.hits_penalized - _stats_prev.hits_penalized);
 
    double decomp_bw = get_decompression_bw();
-   size_t d = get_average_size(); 
-   fprintf(stderr, "[DEBUG] penalized hits = %ld, avoided_misses = %ld, decomp_bw = %f (GB/s)\n", _penalized_hits, _avoided_misses, (decomp_bw / 1073741.824));
-   // fprintf(stderr, "[DEBUG] size = %ld, tau = %f\n", d, _acceptance_rate);
-	return _avoided_misses * (d / disk_bw - d / decomp_bw) -
-			 _penalized_hits * (d / decomp_bw - d / ram_bw) / _acceptance_rate;
+   double ram_bw = get_read_memory_bw();
+   double hit_lat = get_hit_latency();
+   double pen_hit_lat = get_pen_hit_latency();
+   size_t d = get_average_size();
+   fprintf(stderr, "[DEBUG] Penalized hits = %ld\n"
+                   "        Avoided misses = %ld\n" 
+                   "        decomp bw      = %.3f (GB/s)\n"
+                   "        memory bw      = %.3f (GB/s)\n"
+                   "        latency :\n"
+                   "            hit latency      = %.3f (us)\n"
+                   "            pen. hit latency = %.3f (us)\n"
+                   "            factor           = %.3fx\n",
+                   _penalized_hits, _avoided_misses, (decomp_bw / 1073741.824), 
+                   (ram_bw / 1073741.824), hit_lat, pen_hit_lat, pen_hit_lat / hit_lat);
+	
+   return _avoided_misses * (d / disk_bw - d / decomp_bw) -
+          _penalized_hits * (d / decomp_bw - d / ram_bw) / _acceptance_rate;
 }
 
 static void increase_cold_buffer_size()
 {
-   ssize_t allocated = cold_lru_bytes();
-   double allocated_pct = allocated * 100.0 / settings.maxbytes;
-   int theoretical_pct = 100 - settings.hot_lru_pct - settings.warm_lru_pct;
-   fprintf(stderr, "[DEBUG] allocated = %.2f MB, pct = %.2f%% \n", allocated / (1024 * 1024.0), allocated_pct);
-   if (fabs(allocated_pct - theoretical_pct) > 1) return;
+   _used_bytes = cold_lru_bytes();
+   _used_pct = _used_bytes * 100.0 / settings.maxbytes;
+   int allocated_pct = 100 - settings.hot_lru_pct - settings.warm_lru_pct;
+   if (fabs(_used_pct - allocated_pct) > 0.5) return;
    
    if (settings.warm_lru_pct > MIN_WARM_LRU_PCT) {
       settings.warm_lru_pct -= STEP_PCT;
@@ -103,11 +115,10 @@ static void increase_cold_buffer_size()
 
 static void decrease_cold_buffer_size()
 {
-   ssize_t allocated = cold_lru_bytes();
-   double allocated_pct = allocated * 100.0 / settings.maxbytes;
-   int theoretical_pct = 100 - settings.hot_lru_pct - settings.warm_lru_pct;
-   fprintf(stderr, "[DEBUG] allocated = %.2f MB, pct = %.2f%% \n", allocated / (1024 * 1024.0), allocated_pct);
-   if (fabs(allocated_pct - theoretical_pct) > 1024 * 1024) return;
+   _used_bytes = cold_lru_bytes();
+   _used_pct = _used_bytes * 100.0 / settings.maxbytes;
+   int allocated_pct = 100 - settings.hot_lru_pct - settings.warm_lru_pct;
+   if (fabs(_used_pct - allocated_pct) > 0.5) return;
 
    if (settings.warm_lru_pct < MAX_WARM_LRU_PCT) {
       settings.warm_lru_pct += STEP_PCT;
@@ -139,7 +150,14 @@ static void* warm_cold_adjuster_thread()
       }
 
       // fprintf(stderr, "%.1f,%.1f,%.2f,%d\n", _G_curr, _G_prev, delta, settings.warm_lru_pct);
-      fprintf(stderr, "[DEBUG] G_curr = %.3f, G_prev = %.3f, delta = %.3f, cold_lru = %d%%\n", _G_curr, _G_prev, delta, 100 - settings.hot_lru_pct - settings.warm_lru_pct);
+      fprintf(stderr, "[DEBUG] G_curr   = %.3f\n"
+                      "        G_prev   = %.3f\n"
+                      "        delta    = %.3f\n"
+                      "        cold_lru\n"
+                      "            allocated_pct = %d%%\n"
+                      "            used_pct      = %.2f%% (%.2f MB)\n",
+                      _G_curr, _G_prev, delta, 100 - settings.hot_lru_pct - settings.warm_lru_pct,
+                      _used_pct, _used_bytes / (1024 * 1024.0));
    }
 
    return NULL;

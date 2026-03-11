@@ -137,6 +137,7 @@ static void do_slabs_reset(char* ptr, unsigned int sid)
             }
 
             item_trylock_unlock(hold_lock);
+            item_stats_evicted_incr(sid | ITEM_lruid(it));
         }
         ptr += p->size;
     }

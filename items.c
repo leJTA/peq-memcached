@@ -48,7 +48,7 @@ typedef struct {
     uint64_t hits_to_hot;
     uint64_t hits_to_warm;
     uint64_t hits_to_cold;
-    uint64_t hits_penalized;
+    uint64_t hits_penalized;  // CODE (3Q)
     uint64_t hits_to_temp;
     uint64_t mem_requested;
     rel_time_t evicted_time;
@@ -903,6 +903,9 @@ void item_stats(ADD_STAT add_stats, void *c) {
 
             APPEND_NUM_FMT_STAT(fmt, n, "hits_to_cold",
                                 "%llu", (unsigned long long)totals.hits_to_cold);
+
+            APPEND_NUM_FMT_STAT(fmt, n, "hits_penalized",
+                                "%llu", (unsigned long long)totals.hits_penalized);
 
             APPEND_NUM_FMT_STAT(fmt, n, "hits_to_temp",
                                 "%llu", (unsigned long long)totals.hits_to_temp);
@@ -1913,24 +1916,16 @@ void* get_itemstats(void)
     return itemstats;
 }
 
+void item_stats_evicted_incr(int id)
+{
+    pthread_mutex_lock(&lru_locks[id]);
+    itemstats[id].evicted++;
+    pthread_mutex_unlock(&lru_locks[id]);
+}
+
 void set_penalized_dirty(int slabs_clsid)
 {
     penalized_dirty_flags[slabs_clsid] = true;
-}
-
-static size_t average_item_size()
-{
-    unsigned int nitems = 0;
-    unsigned int lru_size = 0;
-    size_t total_size = 0;
-    for (int clsid = POWER_SMALLEST; clsid < MAX_NUMBER_OF_SLAB_CLASSES; ++clsid) {
-        pthread_mutex_lock(&lru_locks[clsid | WARM_LRU]);
-        lru_size = do_get_lru_size(clsid | WARM_LRU);
-        pthread_mutex_unlock(&lru_locks[clsid | WARM_LRU]);
-        nitems += lru_size;
-        total_size += lru_size * slabs_size(clsid);
-    }
-    return total_size / nitems;
 }
 
 unsigned int lru_page_count(int lruid)
@@ -1961,11 +1956,20 @@ size_t cold_lru_bytes(void)
 
 static void mark_penalized(int slabs_clsid) // COLD_LRU locked here
 {
+    assert(penalized_dirty_flags[slabs_clsid] == true);
+    
     if (heads[slabs_clsid] == NULL) return;
 
-    assert(penalized_dirty_flags[slabs_clsid] == true);
     item* it = heads[slabs_clsid];
-    int penalized_count = (slabs_page_count(ITEM_clsid(it)) * settings.slab_page_size) / average_item_size();
+    unsigned int it_count = do_get_lru_size(slabs_clsid);
+    unsigned int it_per_slab = items_per_slab(slabs_clsid & ~(3<<6));
+
+    if (it_count == 0) return;
+    assert(it_per_slab != 0);
+
+    // the number of penalyzed items is the number of items used as minislabs
+    // i.e the number of slab dedicated to the compressed items
+    int penalized_count = (it_count - 1) / it_per_slab + 1;
     int rank = 0;
     while (it != NULL) {
         ++rank;

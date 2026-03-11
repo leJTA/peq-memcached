@@ -7,6 +7,7 @@ void compression_resources_init(void);
 void compression_resources_cleanup(void);
 
 double get_decompression_bw(void);
+double get_read_memory_bw(void);
 size_t get_average_size(void);
 
 // These methods are executed assuming that the item is already protected by a lock.

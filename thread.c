@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <time.h>
 
 #include "queue.h"
 #include "tls.h"
@@ -27,6 +28,11 @@
 
 // BEGIN CODE (3Q)
 #include "3q_compressor.h"
+#define NVAL 100
+static struct timespec _start, _end;
+static double _hit_times[NVAL];
+static double _pen_hit_times[NVAL];
+static int _pos;
 // END CODE (3Q)
 
 #define ITEMS_PER_ALLOC 64
@@ -884,9 +890,12 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
     uint32_t hv;
     hv = hash(key, nkey);
     item_lock(hv);
+    clock_gettime(CLOCK_MONOTONIC, &_start);
     it = do_item_get(key, nkey, hv, t, do_update);
+    clock_gettime(CLOCK_MONOTONIC, &_end);
     
     // BEGIN CODE (3Q)
+    if (it && (ITEM_lruid(it) != COLD_LRU)) _hit_times[_pos] = (_end.tv_nsec - _start.tv_nsec) / 1000.0;
     item* old_it = it;
     if (it && !settings.no_compression && ITEM_lruid(it) == COLD_LRU && do_decompress_item(&it)) {
         assert(old_it->refcount == 1);
@@ -904,6 +913,9 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
 
         do_item_remove(old_it);
     }
+    clock_gettime(CLOCK_MONOTONIC, &_end);
+    if (old_it != it) _pen_hit_times[_pos] = (_end.tv_nsec - _start.tv_nsec) / 1000.0;
+    _pos = (_pos + 1) % NVAL;
     // END CODE (3Q)
     
     item_unlock(hv);
@@ -1193,5 +1205,23 @@ int get_thread_base_id(void)
         }
     }
     return -1;
+}
+
+double get_hit_latency(void)
+{
+	double ttime = 0;
+	for (int i = 0; i < NVAL; ++i) {
+		ttime += _hit_times[i];
+	}	
+	return ttime / NVAL;
+}
+
+double get_pen_hit_latency(void)
+{
+	double ttime = 0;
+	for (int i = 0; i < NVAL; ++i) {
+		ttime += _pen_hit_times[i];
+	}	
+	return ttime / NVAL;
 }
 // END CODE (3Q)
