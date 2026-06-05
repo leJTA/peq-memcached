@@ -50,20 +50,18 @@ int main(int argc, char** argv)
 
 	std::cout << "[INFO] Buffer loaded (" << blob_size / 1024.0 << " KB)\n";
 
-	// -----------------------------
-	// Configuration RocksDB Blob
-	// -----------------------------
+	// === Configure RocksDB ===
 	rocksdb::Options options;
 	options.create_if_missing = true;
 
 	// Disable compression
 	options.compression = rocksdb::kNoCompression;
 
-	// Write buffers adaptés aux gros objets
+	// Write buffers for big objects
 	options.write_buffer_size = 512ULL * 1024 * 1024;
 	options.max_write_buffer_number = 3;
 
-	// --- BLOB CONFIG ---
+	// Enable Blobs
 	options.enable_blob_files = true;
 	options.min_blob_size = 4096; // 4KB
 	options.blob_file_size = 512ULL * 1024 * 1024;
@@ -78,7 +76,7 @@ int main(int argc, char** argv)
 
 	options.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
 
-	// Cleanup DB
+	// Cleanup DB before creating a new one
 	rocksdb::DestroyDB(db_path, options);
 	std::cout << "[INFO] DB cleaned up\n";
 
