@@ -1,4 +1,4 @@
-#include "3q_disk_storage.h"
+#include "peq_disk_storage.h"
 #include "third_party/minunit/minunit.h"
 
 #include <sys/stat.h>
@@ -11,7 +11,7 @@ char* base_dir();
 
 static void setup()
 {
-   disk_storage_init("/tmp/3q-test-dir");
+   disk_storage_init("/tmp/peq-test-dir");
 }
 
 static void teardown()
@@ -35,7 +35,7 @@ MU_TEST(test_storage_init_default) {
 
    mu_check(base_dir() != NULL);
    mu_assert(stat(base_dir(), &info) == 0, "Default base directory folder must exists and be accessible");
-   mu_assert(strcmp(base_dir(), "/tmp/3q-items-data") == 0, "Default base directory mismatch");
+   mu_assert(strcmp(base_dir(), "/tmp/peq-items-data") == 0, "Default base directory mismatch");
 
    teardown();
 }

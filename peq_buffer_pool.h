@@ -1,5 +1,5 @@
-#ifndef __3Q_BUFFER_POOL_H__
-#define __3Q_BUFFER_POOL_H__
+#ifndef __PEQ_BUFFER_POOL_H__
+#define __PEQ_BUFFER_POOL_H__
 
 #include <stddef.h>
 #include <stdbool.h>
@@ -13,4 +13,4 @@ int buffer_pool_count(void);
 size_t buffer_pool_bufsize(void);
 void* buffer_pool_data(int id);
 
-#endif // __3Q_BUFFER_POOL_H__
+#endif // __PEQ_BUFFER_POOL_H__

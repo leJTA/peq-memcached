@@ -35,7 +35,7 @@ item *do_item_crawl_q(item *it);
 
 void *item_lru_bump_buf_create(void);
 
-// BEGIN CODE (3Q)
+// BEGIN CODE (PEQ)
 item* do_subitem_alloc_pull(unsigned int parent_id, unsigned int id);
 bool change_item_slabs_cls(item** ptr, size_t old_ntotal, size_t new_ntotal);
 void set_penalized_dirty(int slabs_clsid);
@@ -43,7 +43,7 @@ void* get_itemstats(void);
 unsigned int lru_page_count(int);
 size_t cold_lru_bytes(void);
 void item_stats_evicted_incr(int id);
-// END CODE (3Q)
+// END CODE (PEQ)
 
 #define LRU_PULL_EVICT 1
 #define LRU_PULL_CRAWL_BLOCKS 2

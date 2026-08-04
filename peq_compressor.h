@@ -1,5 +1,5 @@
-#ifndef __3Q_COMPRESSOR_H__
-#define __3Q_COMPRESSOR_H__
+#ifndef __PEQ_COMPRESSOR_H__
+#define __PEQ_COMPRESSOR_H__
 
 #include <stdbool.h>
 
@@ -14,4 +14,4 @@ size_t get_average_size(void);
 bool do_compress_item(item** ptr);
 bool do_decompress_item(item** ptr);
 
-#endif // __3Q_COMPRESSOR_H__
+#endif // __PEQ_COMPRESSOR_H__

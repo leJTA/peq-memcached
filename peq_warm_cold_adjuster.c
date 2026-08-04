@@ -1,6 +1,6 @@
-#include "3q_warm_cold_adjuster.h"
+#include "peq_warm_cold_adjuster.h"
 #include "memcached.h"
-#include "3q_compressor.h"
+#include "peq_compressor.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -8,9 +8,9 @@
 
 #define MIN_WARM_LRU_PCT 10
 #define MAX_WARM_LRU_PCT 79
-#define STEP_PCT 1                  // Adjustments are made by increments/decrements of 1%.
+#define STEP_PCT 0                  // Adjustments are made by increments/decrements of 1%.
 #define THRESHOLD 0.05              // 5%
-#define WARM_COLD_ADJUSTER_SLEEP_MS 5000  // 5000 ms
+#define WARM_COLD_ADJUSTER_SLEEP_MS 1000  // 5000 ms
 
 static volatile int do_run_warm_cold_adjuster = 0;
 static pthread_mutex_t warm_cold_adjuster_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -176,7 +176,7 @@ int start_warm_cold_adjuster_thread(void *arg)
       pthread_mutex_unlock(&warm_cold_adjuster_lock);
       return -1;
    }
-   thread_setname(warm_cold_adjuster_tid, "3q-adjuster");
+   thread_setname(warm_cold_adjuster_tid, "peq-adjuster");
    pthread_mutex_unlock(&warm_cold_adjuster_lock);
 
    return 0;

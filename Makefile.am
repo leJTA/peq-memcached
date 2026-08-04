@@ -31,11 +31,11 @@ memcached_SOURCES = memcached.c memcached.h \
                     restart.c restart.h \
                     proto_text.c proto_text.h \
                     proto_bin.c proto_bin.h \
-						  3q_compressor.h 3q_compressor.c \
-						  3q_history_buffer.h 3q_history_buffer.c \
-						  3q_disk_storage.h 3q_disk_storage.c \
-						  3q_buffer_pool.h 3q_buffer_pool.c \
-						  3q_warm_cold_adjuster.h 3q_warm_cold_adjuster.c
+						  peq_compressor.h peq_compressor.c \
+						  peq_history_buffer.h peq_history_buffer.c \
+						  peq_disk_storage.h peq_disk_storage.c \
+						  peq_buffer_pool.h peq_buffer_pool.c \
+						  peq_warm_cold_adjuster.h peq_warm_cold_adjuster.c
 
 if BUILD_SOLARIS_PRIVS
 memcached_SOURCES += solaris_priv.c
@@ -235,20 +235,20 @@ maintainer-clean-local:
 	-rm config.log
 	-rm config.status
 	-rm -r gcov-report
-	-rm 3q_history_buffer_test
-	-rm 3q_disk_storage_test
-	-rm 3q_buffer_pool_test
+	-rm peq_history_buffer_test
+	-rm peq_disk_storage_test
+	-rm peq_buffer_pool_test
 
-TEST_3Q_FLAGS = -Wall -Wextra -Wpedantic -g -O0 -fsanitize=address --coverage -DUNIT_TESTING
+TEST_PEQ_FLAGS = -Wall -Wextra -Wpedantic -g -O0 -fsanitize=address --coverage -DUNIT_TESTING
 
-test-3q:
-	$(CC) $(TEST_3Q_FLAGS) 3q_history_buffer.c 3q_history_buffer.t.c -lrt -lgcov -o 3q_history_buffer_test
-	$(CC) $(TEST_3Q_FLAGS) 3q_disk_storage.c 3q_disk_storage.t.c -lrt -lgcov -o 3q_disk_storage_test
-	$(CC) $(TEST_3Q_FLAGS) 3q_buffer_pool.c 3q_buffer_pool.t.c -lrt -lgcov -o 3q_buffer_pool_test
+test-peq:
+	$(CC) $(TEST_PEQ_FLAGS) peq_history_buffer.c peq_history_buffer.t.c -lrt -lgcov -o peq_history_buffer_test
+	$(CC) $(TEST_PEQ_FLAGS) peq_disk_storage.c peq_disk_storage.t.c -lrt -lgcov -o peq_disk_storage_test
+	$(CC) $(TEST_PEQ_FLAGS) peq_buffer_pool.c peq_buffer_pool.t.c -lrt -lgcov -o peq_buffer_pool_test
 
-	./3q_history_buffer_test
-	./3q_disk_storage_test
-	./3q_buffer_pool_test
+	./peq_history_buffer_test
+	./peq_disk_storage_test
+	./peq_buffer_pool_test
 
 	gcovr --root . --exclude '.*\.t\.c' --exclude third_party/
 	gcovr --root . --exclude '.*\.t\.c' --exclude third_party/ --html-details -o gcov-report/

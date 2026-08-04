@@ -26,14 +26,14 @@
 #include <atomic.h>
 #endif
 
-// BEGIN CODE (3Q)
-#include "3q_compressor.h"
+// BEGIN CODE (PEQ)
+#include "peq_compressor.h"
 #define NVAL 100
 static struct timespec _start, _end;
 static double _hit_times[NVAL];
 static double _pen_hit_times[NVAL];
 static int _pos;
-// END CODE (3Q)
+// END CODE (PEQ)
 
 #define ITEMS_PER_ALLOC 64
 
@@ -894,7 +894,7 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
     it = do_item_get(key, nkey, hv, t, do_update);
     clock_gettime(CLOCK_MONOTONIC, &_end);
     
-    // BEGIN CODE (3Q)
+    // BEGIN CODE (PEQ)
     if (it && (ITEM_lruid(it) != COLD_LRU)) _hit_times[_pos] = (_end.tv_nsec - _start.tv_nsec) / 1000.0;
     item* old_it = it;
     if (it && !settings.no_compression && ITEM_lruid(it) == COLD_LRU && do_decompress_item(&it)) {
@@ -916,7 +916,7 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
     clock_gettime(CLOCK_MONOTONIC, &_end);
     if (old_it != it) _pen_hit_times[_pos] = (_end.tv_nsec - _start.tv_nsec) / 1000.0;
     _pos = (_pos + 1) % NVAL;
-    // END CODE (3Q)
+    // END CODE (PEQ)
     
     item_unlock(hv);
     return it;
@@ -1035,7 +1035,7 @@ void threadlocal_stats_reset(void) {
                 sizeof(threads[ii].stats.slab_stats));
         memset(&threads[ii].stats.lru_hits, 0,
                 sizeof(uint64_t) * POWER_LARGEST);
-        memset(&threads[ii].stats.lru_hits_penalized, 0, sizeof(uint64_t) * POWER_LARGEST); // CODE (3Q)
+        memset(&threads[ii].stats.lru_hits_penalized, 0, sizeof(uint64_t) * POWER_LARGEST); // CODE (PEQ)
 
         pthread_mutex_unlock(&threads[ii].stats.mutex);
     }
@@ -1071,7 +1071,7 @@ void threadlocal_stats_aggregate(struct thread_stats *stats) {
         for (sid = 0; sid < POWER_LARGEST; sid++) {
             stats->lru_hits[sid] +=
                 threads[ii].stats.lru_hits[sid];
-            stats->lru_hits_penalized[sid] += threads[ii].stats.lru_hits_penalized[sid]; // CODE (3Q)
+            stats->lru_hits_penalized[sid] += threads[ii].stats.lru_hits_penalized[sid]; // CODE (PEQ)
             stats->slab_stats[CLEAR_LRU(sid)].get_hits +=
                 threads[ii].stats.lru_hits[sid];
         }
@@ -1195,7 +1195,7 @@ void memcached_thread_init(int nthreads, void *arg) {
     pthread_mutex_unlock(&init_lock);
 }
 
-// BEGIN CODE (3Q)
+// BEGIN CODE (PEQ)
 int get_thread_base_id(void)
 {
     pthread_t self = pthread_self();
@@ -1224,4 +1224,4 @@ double get_pen_hit_latency(void)
 	}	
 	return ttime / NVAL;
 }
-// END CODE (3Q)
+// END CODE (PEQ)

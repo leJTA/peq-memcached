@@ -1,4 +1,4 @@
-#include "3q_disk_storage.h"
+#include "peq_disk_storage.h"
 #define XXH_INLINE_ALL
 #include "xxhash.h"
 
@@ -23,7 +23,7 @@ void disk_storage_init(const char* base_dir)
       _base_dir = strdup(base_dir);
    }
    else {
-      _base_dir = strdup("/tmp/3q-items-data");
+      _base_dir = strdup("/tmp/peq-items-data");
    }
    if (mkdir(_base_dir, 0755) != 0) {
       if (errno != EEXIST) {

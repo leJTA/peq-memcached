@@ -1,5 +1,5 @@
 #include "memcached.h"
-#include "3q_compressor.h"
+#include "peq_compressor.h"
 #include "slabs.h"
 
 #include <stdlib.h>

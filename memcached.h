@@ -295,11 +295,11 @@ enum delta_result_type {
     OK, NON_NUMERIC, EOM, DELTA_ITEM_NOT_FOUND, DELTA_ITEM_CAS_MISMATCH
 };
 
-// BEGIN CODE (3Q)
+// BEGIN CODE (PEQ)
 enum compression_algorithm {
    COMPRESSION_ZSTD = 0, COMPRESSION_LZ4, COMPRESSION_SNAPPY
 };
-// END CODE (3Q)
+// END CODE (PEQ)
 
 /** Time relative to server start. Smaller than time_t on 64-bit systems. */
 // TODO: Move to sub-header. needed in logger.h
@@ -386,7 +386,7 @@ struct thread_stats {
 #undef X
     struct slab_stats slab_stats[MAX_NUMBER_OF_SLAB_CLASSES];
     uint64_t lru_hits[POWER_LARGEST];
-    uint64_t lru_hits_penalized[POWER_LARGEST]; // CODE (3Q)
+    uint64_t lru_hits_penalized[POWER_LARGEST]; // CODE (PEQ)
     uint64_t read_buf_count;
     uint64_t read_buf_bytes;
     uint64_t read_buf_bytes_free;
@@ -520,12 +520,12 @@ struct settings {
     bool watch_enabled; /* allows watch commands to be dropped */
     bool relaxed_privileges;   /* Relax process restrictions when running testapp */
     struct slab_rebal_thread *slab_rebal; /* struct for page mover thread */
-    // BEGIN CODE (3Q)
+    // BEGIN CODE (PEQ)
     double compression_ratio_min; /* minimum compression ratio (uncompressed_size / compressed_size) */
     enum compression_algorithm comp_algo; /* ZSTD, LZ4 or SNAPPY */
     size_t hist_buffer_capacity; /* maximum number of item references that can be stored in the history buffer */
     bool no_compression; /* disable cold buffer and compression, equivalent to 2Q */
-    // END CODE (3Q)
+    // END CODE (PEQ)
 #ifdef EXTSTORE
     unsigned int ext_io_threadcount; /* number of IO threads to run. */
     unsigned int ext_page_size; /* size in megabytes of storage pages. */
@@ -601,12 +601,12 @@ extern struct settings settings;
 #define ITEM_STALE 2048
 /* if item key was sent in binary */
 #define ITEM_KEY_BINARY 4096
-// BEGIN CODE (3Q)
+// BEGIN CODE (PEQ)
 /* if item is in the non penalized section of the cold buffer  */
 #define ITEM_PENALIZED 8192
 /* if item is used as a slab that contains compressed items */
 #define ITEM_MINISLAB 16384
-// END CODE (3Q)
+// END CODE (PEQ)
 
 /**
  * Structure for storing items within memcached.
@@ -1111,8 +1111,8 @@ extern void drop_worker_privileges(void);
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
 
-// BEGIN CODE (3Q)
+// BEGIN CODE (PEQ)
 int get_thread_base_id(void);
 double get_hit_latency(void);
 double get_pen_hit_latency(void);
-// END CODE (3Q)
+// END CODE (PEQ)

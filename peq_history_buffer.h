@@ -1,5 +1,5 @@
-#ifndef __3Q_HISTORY_BUFFER_H__
-#define __3Q_HISTORY_BUFFER_H__
+#ifndef __PEQ_HISTORY_BUFFER_H__
+#define __PEQ_HISTORY_BUFFER_H__
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -28,4 +28,4 @@ size_t history_buffer_size(void);
 size_t history_buffer_capacity(void);
 size_t history_buffer_max_mem_usage(void);
 
-#endif // __3Q_HISTORY_BUFFER_H__
+#endif // __PEQ_HISTORY_BUFFER_H__

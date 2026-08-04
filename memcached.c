@@ -61,12 +61,12 @@
 #include <sys/sysctl.h>
 #endif
 
-// BEGIN CODE (3Q)
-#include "3q_compressor.h"
-#include "3q_history_buffer.h"
-#include "3q_disk_storage.h"
-#include "3q_warm_cold_adjuster.h"
-// END CODE (3Q)
+// BEGIN CODE (PEQ)
+#include "peq_compressor.h"
+#include "peq_history_buffer.h"
+#include "peq_disk_storage.h"
+#include "peq_warm_cold_adjuster.h"
+// END CODE (PEQ)
 
 /*
  * forward declarations
@@ -277,12 +277,12 @@ static void settings_init(void) {
     settings.drop_privileges = false;
     settings.watch_enabled = true;
     settings.read_buf_mem_limit = 0;
-    // BEGIN CODE (3Q)
+    // BEGIN CODE (PEQ)
     settings.compression_ratio_min = 2.0;
     settings.comp_algo = COMPRESSION_ZSTD;
     settings.hist_buffer_capacity = 0;
     settings.no_compression = false;
-    // END CODE (3Q)
+    // END CODE (PEQ)
 #ifdef MEMCACHED_DEBUG
     settings.relaxed_privileges = false;
 #endif
@@ -1680,11 +1680,11 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
         }
 
         if (do_store) {
-            // BEGIN CODE (3Q)
+            // BEGIN CODE (PEQ)
             if (old_it->slabs_clsid & WARM_LRU) {
                 it->slabs_clsid |= WARM_LRU;
             }
-            // END CODE (3Q)
+            // END CODE (PEQ)
             STORAGE_delete(t->storage, old_it);
             item_replace(old_it, it, hv, cas_in);
             stored = STORED;
@@ -1724,14 +1724,14 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
         }
 
         if (do_store) {
-            // BEGIN CODE (3Q)
+            // BEGIN CODE (PEQ)
             // if an item is in the history buffer, it is inserted directly in the warm buffer
             history_buffer_lock();
             if (history_buffer_remove(ITEM_key(it), it->nkey) != NULL) {
                 it->slabs_clsid |= WARM_LRU;
             }
             history_buffer_unlock();
-            // END CODE (3Q)
+            // END CODE (PEQ)
             do_item_link(it, hv, cas_in);
             stored = STORED;
         }
@@ -4127,16 +4127,16 @@ static void usage(void) {
            "   - no_modern:           uses defaults of previous major version (1.4.x)\n",
            settings.slab_chunk_size_max / (1 << 10), settings.logger_watcher_buf_size / (1 << 10),
            settings.logger_buf_size / (1 << 10));
-    // BEGIN CODE (3Q)
-    printf("   - compression_algo:    (3Q) compression algorithm to use for the cold buffer.\n"
+    // BEGIN CODE (PEQ)
+    printf("   - compression_algo:    (PEQ) compression algorithm to use for the cold buffer.\n"
            "                            zstd (default), lz4, or snappy\n"
-           "   - min_compression_ratio: (3Q) minimum compression ratio for an item to be admited in\n"
+           "   - min_compression_ratio: (PEQ) minimum compression ratio for an item to be admited in\n"
            "                          the cold buffer (default: %.2f)\n"
-           "   - hist_buffer_capacity: (3Q) maximum number of item references that can be stored in \n"
+           "   - hist_buffer_capacity: (PEQ) maximum number of item references that can be stored in \n"
            "                          the history buffer (default: maxbytes / item_size_max)\n"
-           "   - no_compression:      (3Q) disable compression. Equivalent to 2Q.\n",
+           "   - no_compression:      (PEQ) disable compression. Equivalent to 2Q.\n",
            settings.compression_ratio_min);
-    // END CODE (3Q)
+    // END CODE (PEQ)
     verify_default("tail_repair_time", settings.tail_repair_time == TAIL_REPAIR_TIME_DEFAULT);
     verify_default("lru_crawler_tocrawl", settings.lru_crawler_tocrawl == 0);
     verify_default("idle_timeout", settings.idle_timeout == 0);
@@ -4816,12 +4816,12 @@ int main (int argc, char **argv) {
 #ifdef SOCK_COOKIE_ID
         COOKIE_ID,
 #endif
-        // BEGIN CODE (3Q)
+        // BEGIN CODE (PEQ)
         COMPRESSION_ALGO,
         MIN_COMPRESSION_RATIO,
         HIST_BUFFER_CAPACITY,
         NO_COMPRESSION,
-        // END CODE (3Q)
+        // END CODE (PEQ)
     };
     char *const subopts_tokens[] = {
         [MAXCONNS_FAST] = "maxconns_fast",
@@ -4886,12 +4886,12 @@ int main (int argc, char **argv) {
 #ifdef SOCK_COOKIE_ID
         [COOKIE_ID] = "sock_cookie_id",
 #endif
-        // BEGIN CODE (3Q)
+        // BEGIN CODE (PEQ)
         [COMPRESSION_ALGO] = "compression_algo",
         [MIN_COMPRESSION_RATIO] = "min_compression_ratio",
         [HIST_BUFFER_CAPACITY] = "hist_buffer_capacity",
         [NO_COMPRESSION] = "no_compression",
-        // END CODE (3Q)
+        // END CODE (PEQ)
         NULL
     };
 
@@ -5649,7 +5649,7 @@ int main (int argc, char **argv) {
                 (void)safe_strtoul(subopts_value, &settings.sock_cookie_id);
                 break;
 #endif
-            // BEGIN CODE (3Q)
+            // BEGIN CODE (PEQ)
             case COMPRESSION_ALGO:
                 if (subopts_value == NULL) {
                     fprintf(stderr, "Missing compression_algo argument\n");
@@ -5696,7 +5696,7 @@ int main (int argc, char **argv) {
                 settings.warm_lru_pct = 80; // no cold lru anymore
                 break;
             default:
-            // END CODE (3Q)
+            // END CODE (PEQ)
 #ifdef EXTSTORE
                 // TODO: differentiating response code.
                 if (storage_read_config(storage_cf, &subopts_temp)) {
@@ -5795,12 +5795,12 @@ int main (int argc, char **argv) {
         meta->slab_config = "1.25";
     }
 
-    // BEGIN CODE (3Q)
+    // BEGIN CODE (PEQ)
     if (settings.no_compression && !settings.lru_segmented) {
         fprintf(stderr, "no_compression requires lru_segmented to be true\n");
         exit(EX_USAGE);
     }
-    // END CODE (3Q)
+    // END CODE (PEQ)
 
     if (settings.temp_lru && !start_lru_maintainer) {
         fprintf(stderr, "temporary_ttl requires lru_maintainer to be enabled\n");
@@ -6018,7 +6018,7 @@ int main (int argc, char **argv) {
     }
 
     /* initialize other stuff */
-    // BEGIN CODE (3Q)
+    // BEGIN CODE (PEQ)
     {
         disk_storage_init(NULL);
         compression_resources_init(); // +1 for the LRU maintainer thread
@@ -6037,7 +6037,7 @@ int main (int argc, char **argv) {
         settings.maxbytes -= history_buffer_max_mem_usage();
         start_warm_cold_adjuster_thread(NULL);
     }
-    // END CODE (3Q)
+    // END CODE (PEQ)
     stats_init();
     logger_init();
     logger_create(); // main process logger
@@ -6334,11 +6334,11 @@ int main (int argc, char **argv) {
     /* cleanup base */
     event_base_free(main_base);
 
-    // BEGIN CODE (3Q)
+    // BEGIN CODE (PEQ)
     compression_resources_cleanup();
     history_buffer_cleanup();
     disk_storage_cleanup();
-    // END CODE (3Q)
+    // END CODE (PEQ)
 
     free(meta);
 

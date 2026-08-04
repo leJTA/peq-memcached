@@ -16,16 +16,16 @@
 #include <unistd.h>
 #include <poll.h>
 
-// BEGIN CODE (3Q)
-#include "3q_compressor.h"
-#include "3q_history_buffer.h"
-#include "3q_disk_storage.h"
-// END CODE (3Q)
+// BEGIN CODE (PEQ)
+#include "peq_compressor.h"
+#include "peq_history_buffer.h"
+#include "peq_disk_storage.h"
+// END CODE (PEQ)
 
 /* Forward Declarations */
 static void item_link_q(item *it);
 static void item_unlink_q(item *it);
-static void mark_penalized(int slabs_clsid); // CODE (3Q)
+static void mark_penalized(int slabs_clsid); // CODE (PEQ)
 
 static unsigned int lru_type_map[4] = {HOT_LRU, WARM_LRU, COLD_LRU, TEMP_LRU};
 
@@ -40,7 +40,7 @@ typedef struct {
     uint64_t crawler_reclaimed;
     uint64_t crawler_items_checked;
     uint64_t lrutail_reflocked;
-    uint64_t moves_to_history_buffer;   // CODE (3Q)
+    uint64_t moves_to_history_buffer;   // CODE (PEQ)
     uint64_t moves_to_cold;
     uint64_t moves_to_warm;
     uint64_t moves_within_lru;
@@ -48,7 +48,7 @@ typedef struct {
     uint64_t hits_to_hot;
     uint64_t hits_to_warm;
     uint64_t hits_to_cold;
-    uint64_t hits_penalized;  // CODE (3Q)
+    uint64_t hits_penalized;  // CODE (PEQ)
     uint64_t hits_to_temp;
     uint64_t mem_requested;
     rel_time_t evicted_time;
@@ -62,7 +62,7 @@ static uint64_t sizes_bytes[LARGEST_ID];
 static unsigned int *stats_sizes_hist = NULL;
 static int stats_sizes_buckets = 0;
 static uint64_t cas_id = 1;
-static atomic_bool penalized_dirty_flags[LARGEST_ID]; // CODE (3Q)
+static atomic_bool penalized_dirty_flags[LARGEST_ID]; // CODE (PEQ)
 
 static volatile int do_run_lru_maintainer_thread = 0;
 static pthread_mutex_t lru_maintainer_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -186,11 +186,11 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
             // We send '0' in for "total_bytes" as this routine is always
             // pulling to evict, or forcing HOT -> COLD migration.
             // As of this writing, total_bytes isn't at all used with COLD_LRU.
-            // BEGIN CODE EDIT (3Q)
+            // BEGIN CODE EDIT (PEQ)
             if (!slabs_lru_remove(id) && lru_pull_tail(id, HOT_LRU, 0, LRU_PULL_EVICT, 0, NULL) <= 0) {
                 if (settings.lru_segmented) {
                     lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL);
-            // END CODE EDIT (3Q)
+            // END CODE EDIT (PEQ)
                 } else {
                     break;
                 }
@@ -322,13 +322,13 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
             exptime - current_time <= settings.temporary_ttl) {
         id |= TEMP_LRU;
     } else if (settings.lru_segmented) {
-        // BEGIN CODE (3Q)
+        // BEGIN CODE (PEQ)
         history_buffer_lock();
         if (history_buffer_contains(key, nkey)) {
             id |= WARM_LRU;
         }
         history_buffer_unlock();
-        // END CODE (3Q)
+        // END CODE (PEQ)
     } else {
         /* There is only COLD in compat-mode */
         id |= COLD_LRU;
@@ -567,14 +567,14 @@ void do_item_update(item *it) {
     if (settings.lru_segmented) {
         assert((it->it_flags & ITEM_SLABBED) == 0);
         if ((it->it_flags & ITEM_LINKED) != 0) {
-            // BEGIN CODE EDIT (3Q)
+            // BEGIN CODE EDIT (PEQ)
             if (ITEM_lruid(it) == WARM_LRU) {  // move item to the top of WARM_LRU
                 it->time = current_time;
                 itemstats[it->slabs_clsid].moves_within_lru++;
                 item_unlink_q(it);
                 item_link_q(it);
             }
-            // END CODE EDIT (3Q)
+            // END CODE EDIT (PEQ)
             else {
                 it->time = current_time;
             }
@@ -841,7 +841,7 @@ void item_stats(ADD_STAT add_stats, void *c) {
                     break;
                 case COLD_LRU:
                     totals.hits_to_cold = thread_stats.lru_hits[i];
-                    totals.hits_penalized = thread_stats.lru_hits_penalized[i]; // CODE (3Q)
+                    totals.hits_penalized = thread_stats.lru_hits_penalized[i]; // CODE (PEQ)
                     break;
                 case TEMP_LRU:
                     totals.hits_to_temp = thread_stats.lru_hits[i];
@@ -979,7 +979,7 @@ void item_stats_sizes(ADD_STAT add_stats, void *c) {
 item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVENT_THREAD *t, const bool do_update) {
     item *it = assoc_find(key, nkey, hv);
 
-    // BEGIN CODE (3Q)
+    // BEGIN CODE (PEQ)
     // if (it == NULL) {
     //     history_buffer_lock();
     //     history_item* hi = history_buffer_remove(key, nkey);
@@ -1006,7 +1006,7 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
     //         destroy_history_item(hi);
     //     }
     // }
-    // END CODE (3Q)
+    // END CODE (PEQ)
 
     if (it != NULL) {
         refcount_incr(it);
@@ -1079,14 +1079,14 @@ void do_item_bump(LIBEVENT_THREAD *t, item *it, const uint32_t hv) {
      * FETCHED tells if an item has ever been active.
      */
     if (settings.lru_segmented) {
-        // BEGIN CODE EDIT (3Q)
+        // BEGIN CODE EDIT (PEQ)
         if (ITEM_lruid(it) == HOT_LRU) {
             it->time = current_time; // only need to bump time.
         }
         else if (ITEM_lruid(it) == WARM_LRU) {
             lru_bump_async(t->lru_bump_buf, it, hv);
         }
-        // END CODE EDIT (3Q)
+        // END CODE EDIT (PEQ)
     } else {
         it->it_flags |= ITEM_FETCHED;
         do_item_update(it);
@@ -1183,7 +1183,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
          */
         switch (cur_lru) {
             case HOT_LRU:
-                // BEGIN CODE EDIT (3Q)
+                // BEGIN CODE EDIT (PEQ)
                 limit = settings.maxbytes * settings.hot_lru_pct / 100;
             case WARM_LRU:
                 if (limit == 0)
@@ -1231,7 +1231,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                     /* Don't want to move to COLD, not active, bail out */
                     it = search;
                 }
-                // END CODE EDIT (3Q)
+                // END CODE EDIT (PEQ)
                 break;
             case COLD_LRU:
                 it = search; /* No matter what, we're stopping */
@@ -1252,7 +1252,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                         slabs_reassign(settings.slab_rebal, -1, orig_id, SLABS_REASSIGN_ALLOW_EVICTIONS);
                     }
                     // update penalized items
-                    penalized_dirty_flags[search->slabs_clsid] = true; // CODE (3Q)
+                    penalized_dirty_flags[search->slabs_clsid] = true; // CODE (PEQ)
                 } else if (flags & LRU_PULL_RETURN_ITEM) {
                     /* Keep a reference to this item and return it. */
                     ret_it->it = it;
@@ -1433,7 +1433,7 @@ static int lru_maintainer_juggle(const int slabs_clsid) {
         }
         pthread_mutex_unlock(&lru_locks[slabs_clsid|COLD_LRU]);
         // Also build up total_bytes for the classes.
-        // BEGIN CODE EDIT (3Q)
+        // BEGIN CODE EDIT (PEQ)
         for (int clsid = 1; clsid < LARGEST_ID; ++clsid) {
             pthread_mutex_lock(&lru_locks[clsid|COLD_LRU]);
             total_bytes += do_get_lru_size(slabs_clsid|COLD_LRU) * slabs_size(clsid);
@@ -1450,7 +1450,7 @@ static int lru_maintainer_juggle(const int slabs_clsid) {
         pthread_mutex_lock(&lru_locks[slabs_clsid|WARM_LRU]);
         total_bytes += do_get_lru_size(slabs_clsid|WARM_LRU) * slabs_size(slabs_clsid);
         pthread_mutex_unlock(&lru_locks[slabs_clsid|WARM_LRU]);
-        // END CODE EDIT (3Q)
+        // END CODE EDIT (PEQ)
     }
 
     /* Juggle HOT/WARM up to N times */
@@ -1463,13 +1463,13 @@ static int lru_maintainer_juggle(const int slabs_clsid) {
         if (settings.lru_segmented) {
             do_more += lru_pull_tail(slabs_clsid, COLD_LRU, total_bytes, LRU_PULL_CRAWL_BLOCKS, 0, NULL);
         }
-        // BEGIN CODE (3Q)
+        // BEGIN CODE (PEQ)
         if (penalized_dirty_flags[slabs_clsid | COLD_LRU]) {
             pthread_mutex_lock(&lru_locks[slabs_clsid | COLD_LRU]);
             mark_penalized(slabs_clsid | COLD_LRU);
             pthread_mutex_unlock(&lru_locks[slabs_clsid | COLD_LRU]);
         }
-        // END CODE (3Q)
+        // END CODE (PEQ)
         if (do_more == 0)
             break;
         did_moves++;
@@ -1819,7 +1819,7 @@ item *do_item_crawl_q(item *it) {
     return it->next; /* success */
 }
 
-// BEGIN CODE (3Q)
+// BEGIN CODE (PEQ)
 item* do_subitem_alloc_pull(unsigned int parent_id, unsigned int id)
 {
     item* it;
@@ -1983,4 +1983,4 @@ static void mark_penalized(int slabs_clsid) // COLD_LRU locked here
     }
     penalized_dirty_flags[slabs_clsid] = false;
 }
-// END CODE (3Q)
+// END CODE (PEQ)

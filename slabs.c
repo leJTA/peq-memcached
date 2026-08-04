@@ -28,10 +28,10 @@ typedef struct {
     void *slots;           /* list of item ptrs */
     unsigned int sl_curr;   /* total free items in list */
 
-    // BEGIN CODE (3Q)
+    // BEGIN CODE (PEQ)
     void* itslabs;              // list if items used as slabs 
     unsigned int itslabs_count; // size of prev list
-    // END CODE (3Q)
+    // END CODE (PEQ)
 
     unsigned int slabs;     /* how many slabs were allocated for this class */
 
@@ -96,7 +96,7 @@ unsigned int slabs_size(const int clsid) {
     return slabclass[clsid].size;
 }
 
-// BEGIN CODE (3Q)
+// BEGIN CODE (PEQ)
 unsigned int items_per_slab(const int clsid)
 {
     return slabclass[clsid].perslab;
@@ -310,7 +310,7 @@ void* slabs_alloc_from_itemslab(unsigned int parent_id, unsigned int sid)
     
     return ret;
 }
-// END CODE (3Q)
+// END CODE (PEQ)
 
 // TODO: could this work with the restartable memory?
 // Docs say hugepages only work with private shm allocs.
