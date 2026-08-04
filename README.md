@@ -1,53 +1,10 @@
-# Memcached
+# PEQ-Memcached
 
-Memcached is a high performance multithreaded event-based key/value cache
-store intended to be used in a distributed system.
+Implementation of the **P**seudo-**E**lastic-**Q**ueue (PEQ) policy in Memcached.
 
-See: https://memcached.org/about
+PEQ consists of combining compression with the [2Q](https://www.vldb.org/conf/1994/P439.PDF) policy by applying it adaptively to a subset of warm items. We do this by dedicating a fraction of the warm buffer to a new buffer, which we call the cold buffer, where data are compressed. By doing so, the size of the cache is virtually increased.
 
-A fun story explaining usage: https://memcached.org/tutorial
-
-If you're having trouble, try the wiki: https://memcached.org/wiki
-
-If you're trying to troubleshoot odd behavior or timeouts, see:
-https://memcached.org/timeouts
-
-https://memcached.org/ is a good resource in general. Please use the mailing
-list to ask questions, github issues aren't seen by everyone!
-
-## Dependencies
-
-* libevent - https://www.monkey.org/~provos/libevent/ (libevent-dev)
-* libseccomp (optional, experimental, linux) - enables process restrictions for
-  better security. Tested only on x86-64 architectures.
-* openssl (optional) - enables TLS support. need relatively up to date
-  version. pkg-config is needed to find openssl dependencies (such as -lz).
-
-## Building from tarball
-
-If you downloaded this from the tarball, compilation is the standard process:
-
-```
-./configure
-make
-make test # optional
-make install
-```
-
-If you want TLS support, install OpenSSL's development packages and change the
-configure line:
-
-```
-./configure --enable-tls
-```
-
-If you want to enable the memcached proxy:
-
-```
-./configure --enable-proxy
-```
-
-## Building from git
+# Building
 
 To build memcached in your machine from local repo you will have to install
 autotools, automake and libevent. In a debian based system that will look
@@ -59,68 +16,41 @@ sudo apt-get install autotools-dev automake libevent-dev
 
 After that you can build memcached binary using automake
 
-```
-cd memcached
+```shell
+cd peq-memcached
 ./autogen.sh
 ./configure
 make
-make test
 ```
 
-It should create the binary in the same folder, which you can run
+# Usage
 
-```
-./memcached
-```
+PEQ options are specified using extended parameters (`-o` or `--extended`). They are as follows (they can be displayed using the `--help` option) :
+- `compression_algo`: compression algorithm to use for the cold buffer. zstd (default), lz4, or snappy
+- `min_compression_ratio`: minimum compression ratio for an item to be admited in the cold buffer (default: 2.00)
+- `hist_buffer_capacity`: maximum number of item references that can be stored in the history buffer (default: `maxbytes / item_size_max`)
+- `no_compression`: disable compression, equivalent to 2Q policy.
 
-You can telnet into that memcached to ensure it is up and running
+For example, to run peq with **512MB** of memory, using **lz4** compression with a minimum compression ratio of **3**, the command is as follows :
 
-```
-telnet 127.0.0.1 11211
-stats
-```
-
-IF BUILDING PROXY, AN EXTRA STEP IS NECESSARY:
-
-The proxy has some additional vendor dependency code that we keep out of the
-tree.
-
-```
-cd memcached
-cd vendor
-./fetch.sh
-cd ..
-./autogen.sh
-./configure --enable-proxy
-make
-make test
+```shell
+./memcached -m 512m -o compression_algo=lz4,min_compression_ratio=3
 ```
 
-## Environment
+# Policy Overview
 
-Be warned that the -k (mlockall) option to memcached might be
-dangerous when using a large cache. Just make sure the memcached machines
-don't swap.  memcached does non-blocking network I/O, but not disk.  (it
-should never go to disk, or you've lost the whole point of it)
+The cache is divided into three buffers: a **hot buffer** (FIFO), a **warm buffer** (LRU), and a **cold buffer** (where data are compressed). Newly inserted data are stored in the hot buffer. Long-term hot data are stored in the warm buffer, and recently evicted (from the warm buffer) data are compressed and stored in the cold buffer. The size of the cold buffer is dynamically adjusted as a percentage of the warm buffer, based on the trade-off between the gain from avoided misses and the penalty from penalized hits. The **history buffer** contains only the references of items recently evicted from the hot buffer and is used to identify which of those evicted items are accessed again, thus detecting warm items.
 
-## Build status
+<p align="center">
+    <img src="doc/img/peq-policy.png" alt="peq-policy" width="75%"/>
+</p>
 
-See https://build.memcached.org/ for multi-platform regression testing status.
+# Memory management
 
-## Bug reports
+when a compressed item needs to be stored, a smaller slab is created from the required smaller class using the data section of a free item. This minislab behaves like a normal slab and stores multiple compressed items. This way, compressed and uncompressed items can share the same memory page, making cache allocation more predictable and providing finer granularity than the conventional approach.
 
-Feel free to use the issue tracker on github.
+<p align="center">
+    <img src="doc/img/colocation-architecture.png" alt="colocation" width="70%"/>
+</p>
 
-**If you are reporting a security bug** please contact a maintainer privately.
-We follow responsible disclosure: we handle reports privately, prepare a
-patch, allow notifications to vendor lists. Then we push a fix release and your
-bug can be posted publicly with credit in our release notes and commit
-history.
-
-## Website
-
-* https://www.memcached.org
-
-## Contributing
-
-See https://github.com/memcached/memcached/wiki/DevelopmentRepos
+This implementation is based on [Memcached-1.6.39](https://github.com/memcached/memcached/tree/1.6.39).
