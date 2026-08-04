@@ -10,7 +10,7 @@
 #define MAX_WARM_LRU_PCT 79
 #define STEP_PCT 0                  // Adjustments are made by increments/decrements of 1%.
 #define THRESHOLD 0.05              // 5%
-#define WARM_COLD_ADJUSTER_SLEEP_MS 1000  // 5000 ms
+#define WARM_COLD_ADJUSTER_SLEEP_MS 5000  // 5000 ms
 
 static volatile int do_run_warm_cold_adjuster = 0;
 static pthread_mutex_t warm_cold_adjuster_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -86,16 +86,18 @@ static double G()
    double hit_lat = get_hit_latency();
    double pen_hit_lat = get_pen_hit_latency();
    size_t d = get_average_size();
-   fprintf(stderr, "[DEBUG] Penalized hits = %ld\n"
-                   "        Avoided misses = %ld\n" 
-                   "        decomp bw      = %.3f (GB/s)\n"
-                   "        memory bw      = %.3f (GB/s)\n"
-                   "        latency :\n"
-                   "            hit latency      = %.3f (us)\n"
-                   "            pen. hit latency = %.3f (us)\n"
-                   "            factor           = %.3fx\n",
-                   _penalized_hits, _avoided_misses, (decomp_bw / 1073741.824), 
-                   (ram_bw / 1073741.824), hit_lat, pen_hit_lat, pen_hit_lat / hit_lat);
+   if (settings.verbose > 0) {
+      fprintf(stderr, "[DEBUG] Penalized hits = %ld\n"
+                      "        Avoided misses = %ld\n" 
+                      "        decomp bw      = %.3f (GB/s)\n"
+                      "        memory bw      = %.3f (GB/s)\n"
+                      "        latency :\n"
+                      "            hit latency      = %.3f (us)\n"
+                      "            pen. hit latency = %.3f (us)\n"
+                      "            factor           = %.3fx\n",
+                      _penalized_hits, _avoided_misses, (decomp_bw / 1073741.824), 
+                      (ram_bw / 1073741.824), hit_lat, pen_hit_lat, pen_hit_lat / hit_lat);
+   }
 	
    return _avoided_misses * (d / disk_bw - d / decomp_bw) -
           _penalized_hits * (d / decomp_bw - d / ram_bw) / _acceptance_rate;
@@ -149,15 +151,17 @@ static void* warm_cold_adjuster_thread()
          increase_cold_buffer_size();
       }
 
-      // fprintf(stderr, "%.1f,%.1f,%.2f,%d\n", _G_curr, _G_prev, delta, settings.warm_lru_pct);
-      fprintf(stderr, "[DEBUG] G_curr   = %.3f\n"
-                      "        G_prev   = %.3f\n"
-                      "        delta    = %.3f\n"
-                      "        cold_lru\n"
-                      "            allocated_pct = %d%%\n"
-                      "            used_pct      = %.2f%% (%.2f MB)\n",
-                      _G_curr, _G_prev, delta, 100 - settings.hot_lru_pct - settings.warm_lru_pct,
-                      _used_pct, _used_bytes / (1024 * 1024.0));
+      if (settings.verbose > 0) {
+         // fprintf(stderr, "%.1f,%.1f,%.2f,%d\n", _G_curr, _G_prev, delta, settings.warm_lru_pct);
+         fprintf(stderr, "[DEBUG] G_curr   = %.3f\n"
+                         "        G_prev   = %.3f\n"
+                         "        delta    = %.3f\n"
+                         "        cold_lru\n"
+                         "            allocated_pct = %d%%\n"
+                         "            used_pct      = %.2f%% (%.2f MB)\n",
+                         _G_curr, _G_prev, delta, 100 - settings.hot_lru_pct - settings.warm_lru_pct,
+                         _used_pct, _used_bytes / (1024 * 1024.0));
+      }
    }
 
    return NULL;
