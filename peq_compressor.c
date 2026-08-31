@@ -25,11 +25,17 @@ struct compression_resources {
 static struct compression_resources* _rcs;
 static int _num_threads;
 
-static struct timespec _start, _end;
+struct compression_stats
+{
+	struct timespec tstart;
+	struct timespec tend;
+	double decomp_times[NVAL];
+	double read_times[NVAL];
+	size_t sizes[NVAL];
+};
+
+static struct compression_stats _stats;
 static int _pos;
-static double _decomp_times[NVAL];
-static double _read_times[NVAL];
-static size_t _sizes[NVAL];
 
 void compression_resources_init(void)
 {
@@ -146,7 +152,7 @@ bool do_decompress_item(item** ptr)
 	size_t old_ntotal = ITEM_ntotal(it);
 	size_t new_ntotal = 0;
 
-	clock_gettime(CLOCK_MONOTONIC, &_start);
+	clock_gettime(CLOCK_MONOTONIC, &_stats.tstart);
 
 	switch (settings.comp_algo) {
 	case COMPRESSION_ZSTD:
@@ -183,8 +189,8 @@ bool do_decompress_item(item** ptr)
 		break;
 	}
 
-	clock_gettime(CLOCK_MONOTONIC, &_end);
-	_decomp_times[_pos] = (_end.tv_nsec - _start.tv_nsec) / MILLION;
+	clock_gettime(CLOCK_MONOTONIC, &_stats.tend);
+	_stats.decomp_times[_pos] = (_stats.tend.tv_nsec - _stats.tstart.tv_nsec) / MILLION;
 
 	new_ntotal = old_ntotal + (decompressed_size - it->nbytes);
 	assert(it->nbytes < decompressed_size);
@@ -193,13 +199,13 @@ bool do_decompress_item(item** ptr)
 		return false;
 	}
 
-	clock_gettime(CLOCK_MONOTONIC, &_start);
+	clock_gettime(CLOCK_MONOTONIC, &_stats.tstart);
 
 	memcpy(ITEM_data(*ptr), rc.buffer, decompressed_size);
 
-	clock_gettime(CLOCK_MONOTONIC, &_end);
-	_read_times[_pos] = (_end.tv_nsec - _start.tv_nsec) / MILLION;
-	_sizes[_pos] = decompressed_size;
+	clock_gettime(CLOCK_MONOTONIC, &_stats.tend);
+	_stats.read_times[_pos] = (_stats.tend.tv_nsec - _stats.tstart.tv_nsec) / MILLION;
+	_stats.sizes[_pos] = decompressed_size;
 	_pos = (_pos + 1) % NVAL;
 	
 	return true;
@@ -210,8 +216,8 @@ double get_decompression_bw(void)
 	double ttime = 0;
 	size_t tsize = 0;
 	for (int i = 0; i < NVAL; ++i) {
-		ttime += _decomp_times[i];
-		tsize += _sizes[i];
+		ttime += _stats.decomp_times[i];
+		tsize += _stats.sizes[i];
 	}
 
 	if (ttime == 0) return 214748364; // if ttime is zero, we set the bandwidth to 200 GB/s
@@ -224,8 +230,8 @@ double get_read_memory_bw(void)
 	double ttime = 0;
 	size_t tsize = 0;
 	for (int i = 0; i < NVAL; ++i) {
-		ttime += _read_times[i];
-		tsize += _sizes[i];
+		ttime += _stats.read_times[i];
+		tsize += _stats.sizes[i];
 	}
 
 	if (ttime == 0) return 214748364; // if ttime is zero, we set the bandwidth to 200 GB/s
@@ -237,8 +243,8 @@ size_t get_average_size()
 {
 	size_t tsize = 0;
 	short n;
-	for (n = 0; n < NVAL && _sizes[n] > 0; ++n) {
-		tsize += _sizes[n];
+	for (n = 0; n < NVAL && _stats.sizes[n] > 0; ++n) {
+		tsize += _stats.sizes[n];
 	}
 	return (n > 0) ? (tsize / n) : 0;
 }
